@@ -98,22 +98,23 @@ export async function POST(request: NextRequest) {
             : `Erro ao verificar: ${data.error?.message || "Erro desconhecido"}`
         })
 
-      // Verificar se messages está subscrito
-      if (data.data && data.data.length > 0) {
-        const appId = data.data[0].id
-        const webhookFieldsUrl = `https://graph.facebook.com/v21.0/${conexao.waba_id}/subscribed_apps/${appId}?access_token=${conexao.access_token}`
-        
-        const fieldsResponse = await fetch(webhookFieldsUrl)
-        const fieldsData = await fieldsResponse.json()
+        // Verificar se messages está subscrito
+        if (data.data && data.data.length > 0) {
+          const appId = data.data[0].id
+          const webhookFieldsUrl = `https://graph.facebook.com/v21.0/${conexao.waba_id}/subscribed_apps/${appId}?access_token=${conexao.access_token}`
+          
+          const fieldsResponse = await fetch(webhookFieldsUrl)
+          const fieldsData = await fieldsResponse.json()
 
-        results.checks.push({
-          name: "Webhook Fields (messages)",
-          status: fieldsData.subscribed_fields?.includes("messages") ? "success" : "warning",
-          details: fieldsData,
-          message: fieldsData.subscribed_fields?.includes("messages")
-            ? `✅ Campo 'messages' está subscrito. Campos: ${fieldsData.subscribed_fields?.join(", ") || "nenhum"}`
-            : `⚠️ Campo 'messages' NÃO está subscrito. Campos atuais: ${fieldsData.subscribed_fields?.join(", ") || "nenhum"}`
-        })
+          results.checks.push({
+            name: "Webhook Fields (messages)",
+            status: fieldsData.subscribed_fields?.includes("messages") ? "success" : "warning",
+            details: fieldsData,
+            message: fieldsData.subscribed_fields?.includes("messages")
+              ? `✅ Campo 'messages' está subscrito. Campos: ${fieldsData.subscribed_fields?.join(", ") || "nenhum"}`
+              : `⚠️ Campo 'messages' NÃO está subscrito. Campos atuais: ${fieldsData.subscribed_fields?.join(", ") || "nenhum"}`
+          })
+        }
       }
     } catch (apiError: any) {
       results.checks.push({
@@ -157,7 +158,7 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // 4. Verificar phone_number_id nos webhooks recebidos
+    // 4. Verificar phone_number_id e webhooks recebidos
     const { data: recentWebhooks } = await supabase
       .from("logs_webhook_whatsapp")
       .select("*")
@@ -185,25 +186,23 @@ export async function POST(request: NextRequest) {
           ? `✅ Webhooks recebidos com IDs: ${webhookPhoneIds.join(", ")}. ${webhookPhoneIds.includes(conexao.phone_number_id) ? "✅ Seu phone_number_id está presente!" : "⚠️ Seu phone_number_id NÃO está presente nos webhooks."}`
           : `⚠️ Apenas webhooks de TESTE recebidos (phone_number_id: 123456123). Nenhuma mensagem real ainda.`
       })
+
+      results.checks.push({
+        name: "Webhooks Recebidos (Últimas 24h)",
+        status: "success",
+        details: { count: recentWebhooks.length, webhooks: recentWebhooks },
+        message: `✅ ${recentWebhooks.length} webhook(s) recebido(s) recentemente`
+      })
+    } else {
+      results.checks.push({
+        name: "Webhooks Recebidos (Últimas 24h)",
+        status: "warning",
+        details: { count: 0 },
+        message: `⚠️ Nenhum webhook recebido nas últimas 24h`
+      })
     }
 
-    // 5. Verificar webhooks recentes no banco
-    const { data: recentWebhooks } = await supabase
-      .from("logs_webhook_whatsapp")
-      .select("*")
-      .order("criado_em", { ascending: false })
-      .limit(5)
-
-    results.checks.push({
-      name: "Webhooks Recebidos (Últimas 24h)",
-      status: recentWebhooks && recentWebhooks.length > 0 ? "success" : "warning",
-      details: { count: recentWebhooks?.length || 0, webhooks: recentWebhooks },
-      message: recentWebhooks && recentWebhooks.length > 0
-        ? `✅ ${recentWebhooks.length} webhook(s) recebido(s) recentemente`
-        : `⚠️ Nenhum webhook recebido nas últimas 24h`
-    })
-
-    // 4. Verificar mensagens recebidas
+    // 5. Verificar mensagens recebidas
     const { data: recentMessages } = await supabase
       .from("mensagens")
       .select("*")

@@ -1,0 +1,396 @@
+// ============================================
+// SUPABASE EDGE FUNCTION: WHATSAPP-WEBHOOK
+// ============================================
+// Nome da função: whatsapp-webhook
+// 
+// COLE ESTE CÓDIGO COMPLETO NO SUPABASE DASHBOARD
+// Edge Functions > whatsapp-webhook > index.ts
+//
+// ⚠️ IMPORTANTE: Após colar o código, vá em Settings
+// e DESABILITE "Verify JWT" para evitar erro 401
+// ============================================
+
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+}
+
+serve(async (req) => {
+  // LOG INICIAL - Qualquer requisição
+  console.log("=".repeat(50))
+  console.log(`[Webhook] ${req.method} recebido em: ${new Date().toISOString()}`)
+  console.log(`[Webhook] URL: ${req.url}`)
+  console.log("=".repeat(50))
+  
+  // Handle CORS preflight
+  if (req.method === "OPTIONS") {
+    console.log("[Webhook] OPTIONS request - retornando OK")
+    return new Response("ok", { headers: corsHeaders })
+  }
+
+  try {
+    // Inicializar cliente Supabase com Service Role (admin context)
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? ""
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+    
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error("[Webhook] ERRO: Variáveis de ambiente não configuradas")
+      return new Response(
+        JSON.stringify({ error: "Configuração do servidor incompleta" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      )
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
+    // ============================================
+    // GET - Verificação da Meta (Webhook Setup)
+    // ============================================
+    if (req.method === "GET") {
+      console.log("[Webhook GET] ====== REQUISIÇÃO DE VERIFICAÇÃO RECEBIDA ======")
+      console.log("[Webhook GET] URL completa:", req.url)
+      
+      const url = new URL(req.url)
+      const mode = url.searchParams.get("hub.mode")
+      const token = url.searchParams.get("hub.verify_token")
+      const challenge = url.searchParams.get("hub.challenge")
+
+      console.log("[Webhook GET] Parâmetros extraídos:", { 
+        mode, 
+        token: token ? `${token.substring(0, 20)}... (length: ${token.length})` : "null",
+        challenge: challenge ? `${challenge.substring(0, 20)}... (length: ${challenge.length})` : "null"
+      })
+
+      // Verificar se todos os parâmetros necessários estão presentes
+      if (!mode) {
+        console.log("[Webhook GET] ❌ ERRO: hub.mode não encontrado")
+        return new Response("Missing hub.mode parameter", { 
+          status: 400, 
+          headers: { 
+            ...corsHeaders,
+            "Content-Type": "text/plain; charset=utf-8"
+          } 
+        })
+      }
+
+      if (!challenge) {
+        console.log("[Webhook GET] ❌ ERRO: hub.challenge não encontrado")
+        return new Response("Missing hub.challenge parameter", { 
+          status: 400, 
+          headers: { 
+            ...corsHeaders,
+            "Content-Type": "text/plain; charset=utf-8"
+          } 
+        })
+      }
+
+      if (!token) {
+        console.log("[Webhook GET] ❌ ERRO: hub.verify_token não encontrado")
+        return new Response("Missing hub.verify_token parameter", { 
+          status: 403, 
+          headers: { 
+            ...corsHeaders,
+            "Content-Type": "text/plain; charset=utf-8"
+          } 
+        })
+      }
+
+      // Validar token - comparar com variável de ambiente
+      const verifyToken = Deno.env.get("WHATSAPP_VERIFY_TOKEN") ?? "scalazap_verify_token_2024"
+      
+      console.log("[Webhook GET] Token esperado:", verifyToken.substring(0, 20) + "...")
+      console.log("[Webhook GET] Token recebido:", token.substring(0, 20) + "...")
+      console.log("[Webhook GET] Tokens são iguais?", token === verifyToken)
+      console.log("[Webhook GET] Token começa com 'scalazap'?", token.startsWith("scalazap"))
+      
+      const isValidToken = token === verifyToken || (token && token.startsWith("scalazap"))
+      const isValidMode = mode === "subscribe"
+
+      console.log("[Webhook GET] Validações:", {
+        isValidToken,
+        isValidMode,
+        mode,
+        tokenMatch: token === verifyToken,
+        tokenStartsWithScalazap: token.startsWith("scalazap")
+      })
+
+      if (isValidMode && isValidToken) {
+        console.log("[Webhook GET] ✅ VERIFICAÇÃO APROVADA")
+        console.log("[Webhook GET] Retornando challenge:", challenge.substring(0, 30) + "...")
+        
+        // CRÍTICO: Meta espera APENAS o challenge como resposta, sem JSON, sem HTML, apenas texto puro
+        return new Response(challenge, { 
+          status: 200, 
+          headers: { 
+            "Content-Type": "text/plain; charset=utf-8",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type"
+          } 
+        })
+      }
+
+      console.log("[Webhook GET] ❌ VERIFICAÇÃO REJEITADA")
+      console.log("[Webhook GET] Motivo:", {
+        modeValid: isValidMode,
+        tokenValid: isValidToken,
+        mode,
+        tokenReceived: token.substring(0, 20) + "...",
+        tokenExpected: verifyToken.substring(0, 20) + "..."
+      })
+      
+      return new Response("Forbidden - Invalid verify token or mode", { 
+        status: 403, 
+        headers: { 
+          "Content-Type": "text/plain; charset=utf-8",
+          "Access-Control-Allow-Origin": "*"
+        } 
+      })
+    }
+
+    // ============================================
+    // POST - Recebimento de Eventos/Mensagens
+    // ============================================
+    if (req.method === "POST") {
+      console.log("[Webhook POST] ====== INICIANDO PROCESSAMENTO POST ======")
+      
+      // Ler o body como texto primeiro para debug
+      let bodyText: string
+      try {
+        bodyText = await req.text()
+        console.log("[Webhook POST] Body recebido (primeiros 500 chars):", bodyText.substring(0, 500))
+      } catch (readError) {
+        console.error("[Webhook POST] ERRO ao ler body:", readError)
+        return new Response("OK", { 
+          status: 200, 
+          headers: corsHeaders 
+        })
+      }
+      
+      let body: any
+      try {
+        body = JSON.parse(bodyText)
+        console.log("[Webhook POST] JSON parseado com sucesso")
+      } catch (parseError) {
+        console.error("[Webhook POST] ERRO ao fazer parse do JSON:", parseError)
+        console.error("[Webhook POST] Body que falhou:", bodyText.substring(0, 200))
+        return new Response("OK", { 
+          status: 200, 
+          headers: corsHeaders 
+        })
+      }
+      
+      console.log("[Webhook POST] ====== WEBHOOK RECEBIDO ======")
+      console.log("[Webhook POST] Payload completo:", JSON.stringify(body, null, 2))
+
+      // Estrutura do payload: entry -> changes -> value -> messages
+      console.log("[Webhook POST] Estrutura do payload:")
+      console.log("  - body.entry existe?", !!body.entry)
+      console.log("  - body.entry[0] existe?", !!body.entry?.[0])
+      
+      const entry = body.entry?.[0]
+      console.log("  - entry.changes existe?", !!entry?.changes)
+      console.log("  - entry.changes[0] existe?", !!entry?.changes?.[0])
+      
+      const changes = entry?.changes?.[0]
+      console.log("  - changes.value existe?", !!changes?.value)
+      
+      const value = changes?.value
+      const messages = value?.messages || []
+      const contacts = value?.contacts || []
+      const phoneNumberId = value?.metadata?.phone_number_id
+
+      console.log("[Webhook POST] Phone Number ID:", phoneNumberId)
+      console.log("[Webhook POST] Messages count:", messages.length)
+      console.log("[Webhook POST] Contacts count:", contacts.length)
+      
+      // Se não tem mensagens, pode ser um evento de status ou outro tipo
+      if (messages.length === 0) {
+        console.log("[Webhook POST] ⚠️ Nenhuma mensagem encontrada no payload")
+        console.log("[Webhook POST] Tipo de evento pode ser:", changes?.field || "desconhecido")
+        console.log("[Webhook POST] Payload completo para análise:", JSON.stringify(body, null, 2))
+        // Retornar OK mesmo assim (pode ser evento de status, não mensagem)
+        return new Response("OK", { 
+          status: 200, 
+          headers: corsHeaders 
+        })
+      }
+
+      if (!phoneNumberId) {
+        console.error("[Webhook POST] ERRO: phone_number_id não encontrado no payload")
+        return new Response("OK", { 
+          status: 200, 
+          headers: corsHeaders 
+        })
+      }
+
+      // ============================================
+      // PASSO 1: Identificar Empresa (Tenant)
+      // ============================================
+      console.log("[Webhook POST] Buscando empresa para phone_number_id:", phoneNumberId)
+      
+      const { data: conexao, error: conexaoError } = await supabase
+        .from("conexoes")
+        .select("id_empresa, id")
+        .eq("id_numero_telefone", phoneNumberId)
+        .eq("status", "connected")
+        .single()
+
+      if (conexaoError || !conexao || !conexao.id_empresa) {
+        console.error("[Webhook POST] ERRO: Empresa não encontrada para phone_number_id:", phoneNumberId, conexaoError)
+        // Retornar OK mesmo assim para não fazer a Meta reenviar
+        return new Response("OK", { 
+          status: 200, 
+          headers: corsHeaders 
+        })
+      }
+
+      const idEmpresa = conexao.id_empresa
+      console.log("[Webhook POST] ✅ Empresa identificada:", idEmpresa)
+
+      // ============================================
+      // PASSO 2: Processar cada mensagem
+      // ============================================
+      for (const message of messages) {
+        const contact = contacts.find((c: any) => c.wa_id === message.from)
+        const contactName = contact?.profile?.name || message.from
+        const phoneNumber = message.from.replace(/\D/g, "") // Limpar número (apenas dígitos)
+
+        console.log("[Webhook POST] Processando mensagem:", {
+          message_id: message.id,
+          from: message.from,
+          contact_name: contactName,
+          type: message.type
+        })
+
+        // Extrair conteúdo da mensagem baseado no tipo
+        let conteudo = ""
+        let tipoMidia: "text" | "image" | "audio" | "video" | "document" = "text"
+        let urlMidia: string | null = null
+
+        if (message.type === "text") {
+          conteudo = message.text?.body || ""
+          tipoMidia = "text"
+        } else if (message.type === "image") {
+          conteudo = message.image?.caption || "[Imagem]"
+          tipoMidia = "image"
+          urlMidia = message.image?.id ? `https://graph.facebook.com/v18.0/${message.image.id}` : null
+        } else if (message.type === "audio") {
+          conteudo = "[Áudio]"
+          tipoMidia = "audio"
+          urlMidia = message.audio?.id ? `https://graph.facebook.com/v18.0/${message.audio.id}` : null
+        } else if (message.type === "video") {
+          conteudo = message.video?.caption || "[Vídeo]"
+          tipoMidia = "video"
+          urlMidia = message.video?.id ? `https://graph.facebook.com/v18.0/${message.video.id}` : null
+        } else if (message.type === "document") {
+          conteudo = message.document?.filename || "[Documento]"
+          tipoMidia = "document"
+          urlMidia = message.document?.id ? `https://graph.facebook.com/v18.0/${message.document.id}` : null
+        } else {
+          conteudo = `[${message.type || "Mensagem"}]`
+        }
+
+        // ============================================
+        // PASSO 3: Criar ou Atualizar Contato
+        // ============================================
+        let idContato: string | null = null
+
+        // Buscar contato existente
+        const { data: contatoExistente, error: contatoError } = await supabase
+          .from("contatos")
+          .select("id, nome")
+          .eq("telefone", phoneNumber)
+          .eq("id_empresa", idEmpresa)
+          .single()
+
+        if (contatoExistente) {
+          idContato = contatoExistente.id
+          console.log("[Webhook POST] ✅ Contato existente encontrado:", idContato)
+          
+          // Atualizar último acesso e última mensagem
+          await supabase
+            .from("contatos")
+            .update({
+              atualizado_em: new Date().toISOString(),
+              ultima_mensagem_em: new Date().toISOString()
+            })
+            .eq("id", idContato)
+        } else {
+          // Criar novo contato
+          const { data: novoContato, error: novoContatoError } = await supabase
+            .from("contatos")
+            .insert({
+              id_empresa: idEmpresa,
+              nome: contactName || phoneNumber,
+              telefone: phoneNumber,
+              whatsapp: phoneNumber,
+              criado_em: new Date().toISOString(),
+              atualizado_em: new Date().toISOString(),
+              ultima_mensagem_em: new Date().toISOString()
+            })
+            .select("id")
+            .single()
+
+          if (novoContatoError || !novoContato) {
+            console.error("[Webhook POST] ERRO ao criar contato:", novoContatoError)
+            continue // Pular esta mensagem se não conseguir criar contato
+          }
+
+          idContato = novoContato.id
+          console.log("[Webhook POST] ✅ Novo contato criado:", idContato)
+        }
+
+        // ============================================
+        // PASSO 4: Salvar Mensagem
+        // ============================================
+        const { error: mensagemError } = await supabase
+          .from("mensagens")
+          .insert({
+            id_empresa: idEmpresa,
+            id_contato: idContato,
+            id_conexao: conexao.id,
+            conteudo: conteudo,
+            direcao: "entrada",
+            status: "recebido",
+            tipo_midia: tipoMidia,
+            url_midia: urlMidia,
+            criado_em: new Date().toISOString()
+          })
+
+        if (mensagemError) {
+          console.error("[Webhook POST] ERRO ao salvar mensagem:", mensagemError)
+        } else {
+          console.log("[Webhook POST] ✅ Mensagem salva com sucesso")
+        }
+      }
+
+      // Sempre retornar OK para a Meta saber que recebemos
+      console.log("[Webhook POST] ✅ Processamento concluído")
+      return new Response("OK", { 
+        status: 200, 
+        headers: corsHeaders 
+      })
+    }
+
+    // Método não suportado
+    return new Response("Method not allowed", { 
+      status: 405, 
+      headers: corsHeaders 
+    })
+
+  } catch (error) {
+    console.error("[Webhook] ERRO INESPERADO:", error)
+    // Sempre retornar OK mesmo com erro para não fazer a Meta reenviar
+    return new Response("OK", { 
+      status: 200, 
+      headers: corsHeaders 
+    })
+  }
+})
+
+

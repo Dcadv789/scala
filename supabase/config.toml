@@ -1,0 +1,16 @@
+# Supabase Configuration
+# Este arquivo configura o projeto Supabase local e Edge Functions
+
+[project]
+# ID do projeto (será preenchido ao fazer deploy)
+id = ""
+
+[auth]
+# Configurações de autenticação
+enabled = true
+
+[functions]
+# Configurações das Edge Functions
+whatsapp-webhook = { verify_jwt = false }
+
+

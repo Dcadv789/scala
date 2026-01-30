@@ -1,0 +1,51 @@
+{
+  "name": "ScalaZap - Disparos WhatsApp API Oficial",
+  "short_name": "ScalaZap",
+  "description": "Sistema completo de disparos em massa no WhatsApp usando a API Oficial do Meta. Envie milhares de mensagens, gerencie conversas e escale suas vendas.",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#22c55e",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "categories": ["business", "productivity", "marketing"],
+  "shortcuts": [
+    {
+      "name": "Chat ao Vivo",
+      "short_name": "Chat",
+      "description": "Acesse o chat ao vivo",
+      "url": "/dashboard/chat"
+    },
+    {
+      "name": "Campanhas",
+      "short_name": "Campanhas",
+      "description": "Gerencie suas campanhas",
+      "url": "/dashboard/campaigns"
+    },
+    {
+      "name": "Contatos",
+      "short_name": "Contatos",
+      "description": "Gerencie seus contatos",
+      "url": "/dashboard/contacts"
+    }
+  ]
+}

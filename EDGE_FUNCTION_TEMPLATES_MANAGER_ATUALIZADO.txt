@@ -1,0 +1,519 @@
+// Supabase Edge Function: Templates Manager
+// Tecnologia: Deno (TypeScript)
+// Endpoint: https://[PROJECT_REF].supabase.co/functions/v1/templates-manager
+//
+// Ações disponíveis:
+// - POST /templates/sync - Sincronizar templates da Meta
+// - POST /templates/create - Criar novo template na Meta
+
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+}
+
+interface TemplateComponent {
+  type: "HEADER" | "BODY" | "FOOTER"
+  format?: "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT"
+  text?: string
+  example?: {
+    header_text?: string[]
+    body_text?: string[][]
+  }
+}
+
+interface TemplateButton {
+  type: "QUICK_REPLY" | "URL" | "PHONE_NUMBER"
+  text: string
+  url?: string
+  phone_number?: string
+}
+
+interface CreateTemplateRequest {
+  action: "sync" | "create"
+  id_empresa: string
+  // Para CREATE
+  nome?: string
+  categoria?: "MARKETING" | "UTILITY" | "AUTHENTICATION"
+  idioma?: string
+  componentes?: {
+    header?: TemplateComponent
+    body?: TemplateComponent
+    footer?: TemplateComponent
+    buttons?: TemplateButton[]
+  }
+}
+
+serve(async (req) => {
+  console.log("=".repeat(50))
+  console.log(`[Templates Manager] ${req.method} recebido em: ${new Date().toISOString()}`)
+  console.log("=".repeat(50))
+
+  // Handle CORS preflight
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders })
+  }
+
+  try {
+    // Inicializar cliente Supabase
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? ""
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error("[Templates Manager] ERRO: Variáveis de ambiente não configuradas")
+      return new Response(
+        JSON.stringify({ success: false, error: "Configuração do servidor incompleta" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      )
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
+    if (req.method !== "POST") {
+      return new Response(
+        JSON.stringify({ success: false, error: "Método não permitido" }),
+        { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      )
+    }
+
+    const body: CreateTemplateRequest = await req.json()
+    const { action, id_empresa } = body
+
+    if (!action || !id_empresa) {
+      return new Response(
+        JSON.stringify({ success: false, error: "action e id_empresa são obrigatórios" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      )
+    }
+
+    // Validar formato UUID do id_empresa
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    if (!uuidRegex.test(id_empresa)) {
+      return new Response(
+        JSON.stringify({ success: false, error: "id_empresa deve ser um UUID válido" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      )
+    }
+
+    // Verificar se a empresa existe
+    const { data: empresa, error: empresaError } = await supabase
+      .from("empresas")
+      .select("id, nome")
+      .eq("id", id_empresa)
+      .single()
+
+    if (empresaError || !empresa) {
+      console.error("[Templates Manager] Empresa não encontrada:", id_empresa, empresaError)
+      return new Response(
+        JSON.stringify({ success: false, error: "Empresa não encontrada. Verifique o id_empresa." }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      )
+    }
+
+    console.log("[Templates Manager] Ação solicitada:", action)
+    console.log("[Templates Manager] ID Empresa:", id_empresa)
+    console.log("[Templates Manager] Empresa encontrada:", empresa.nome)
+
+    // ============================================
+    // BUSCAR CREDENCIAIS DA CONEXÃO
+    // ============================================
+    console.log("[Templates Manager] Buscando conexão da empresa...")
+    let { data: conexao, error: conexaoError } = await supabase
+      .from("conexoes")
+      .select("id_waba, token_acesso, id_numero_telefone, status")
+      .eq("id_empresa", id_empresa)
+      .in("status", ["connected", "active"])
+      .single()
+
+    // Se não encontrou com status connected/active, tentar qualquer conexão da empresa
+    if (conexaoError || !conexao) {
+      console.log("[Templates Manager] Tentando buscar qualquer conexão da empresa...")
+      const { data: conexaoFallback, error: conexaoFallbackError } = await supabase
+        .from("conexoes")
+        .select("id_waba, token_acesso, id_numero_telefone, status")
+        .eq("id_empresa", id_empresa)
+        .single()
+      
+      if (conexaoFallback && conexaoFallback.id_waba && conexaoFallback.token_acesso) {
+        console.log("[Templates Manager] ✅ Usando conexão encontrada (status:", conexaoFallback.status, ")")
+        conexao = conexaoFallback
+        conexaoError = null
+      } else {
+        console.error("[Templates Manager] Erro ao buscar conexão:", conexaoError || conexaoFallbackError)
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: "Conexão não encontrada ou não possui id_waba/token_acesso configurados" 
+          }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        )
+      }
+    }
+
+    if (!conexao || !conexao.id_waba || !conexao.token_acesso) {
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: "Conexão não possui id_waba ou token_acesso configurados" 
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      )
+    }
+
+    console.log("[Templates Manager] ✅ Conexão encontrada:", {
+      id_waba: conexao.id_waba,
+      has_token: !!conexao.token_acesso
+    })
+
+    // ============================================
+    // AÇÃO A: SINCRONIZAR TEMPLATES
+    // ============================================
+    if (action === "sync") {
+      console.log("[Templates Manager] ====== INICIANDO SINCRONIZAÇÃO ======")
+      
+      try {
+        const metaUrl = `https://graph.facebook.com/v18.0/${conexao.id_waba}/message_templates?access_token=${conexao.token_acesso}`
+        console.log("[Templates Manager] Chamando API da Meta:", metaUrl.replace(conexao.token_acesso, "***TOKEN***"))
+        
+        const response = await fetch(metaUrl)
+        const data = await response.json()
+
+        if (!response.ok || data.error) {
+          console.error("[Templates Manager] Erro na API da Meta:", data.error)
+          return new Response(
+            JSON.stringify({ 
+              success: false, 
+              error: data.error?.message || "Erro ao buscar templates da Meta" 
+            }),
+            { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          )
+        }
+
+        const templates = data.data || []
+        console.log("[Templates Manager] Templates encontrados na Meta:", templates.length)
+
+        let sincronizados = 0
+        let atualizados = 0
+        let criados = 0
+
+        // Processar cada template
+        for (const template of templates) {
+          console.log("[Templates Manager] Processando template:", template.name, "ID:", template.id)
+
+          // Validar dados obrigatórios
+          if (!template.name) {
+            console.error("[Templates Manager] ⚠️ Template sem nome, pulando...")
+            continue
+          }
+
+          if (!id_empresa) {
+            console.error("[Templates Manager] ⚠️ id_empresa não fornecido, pulando template:", template.name)
+            continue
+          }
+
+          // Mapear componentes
+          const componentes: any = {
+            header: template.components?.find((c: any) => c.type === "HEADER") || null,
+            body: template.components?.find((c: any) => c.type === "BODY") || null,
+            footer: template.components?.find((c: any) => c.type === "FOOTER") || null,
+            buttons: template.components?.filter((c: any) => c.type === "BUTTONS") || []
+          }
+
+          // Verificar se template já existe (usar maybeSingle para não dar erro se não encontrar)
+          const { data: templateExistente, error: checkError } = await supabase
+            .from("modelos")
+            .select("id")
+            .eq("id_meta", template.id)
+            .maybeSingle()
+
+          if (checkError && checkError.code !== "PGRST116") {
+            // PGRST116 = nenhum resultado encontrado (é esperado)
+            console.error("[Templates Manager] Erro ao verificar template existente:", checkError)
+          }
+
+          const templateData: any = {
+            id_meta: template.id || null,
+            id_empresa: id_empresa,
+            nome: template.name,
+            idioma: template.language || "pt_BR",
+            categoria: template.category || "MARKETING",
+            componentes: componentes || {},
+            status: template.status || "PENDING",
+            atualizado_em: new Date().toISOString()
+          }
+
+          // Adicionar motivo_rejeicao apenas se template.rejection_reason existir
+          // (a coluna pode não existir na tabela ainda)
+          if (template.rejection_reason) {
+            templateData.motivo_rejeicao = template.rejection_reason
+          }
+
+          console.log("[Templates Manager] Template data preparado:", {
+            id_meta: templateData.id_meta,
+            id_empresa: templateData.id_empresa,
+            nome: templateData.nome,
+            status: templateData.status,
+            categoria: templateData.categoria,
+            idioma: templateData.idioma,
+            has_componentes: !!templateData.componentes
+          })
+
+          let updateError: any = null
+          let insertError: any = null
+
+          if (templateExistente) {
+            // Atualizar template existente
+            console.log("[Templates Manager] Template já existe (ID:", templateExistente.id, "), atualizando...")
+            const updateResult = await supabase
+              .from("modelos")
+              .update(templateData)
+              .eq("id_meta", template.id)
+              .select()
+
+            updateError = updateResult.error
+
+            if (updateError) {
+              console.error("[Templates Manager] ❌ Erro ao atualizar template:", updateError)
+              console.error("[Templates Manager] Detalhes do erro:", JSON.stringify(updateError, null, 2))
+            } else {
+              atualizados++
+              sincronizados++
+              console.log("[Templates Manager] ✅ Template atualizado com sucesso:", template.name)
+              console.log("[Templates Manager] Template atualizado no banco:", updateResult.data)
+            }
+          } else {
+            // Criar novo template
+            console.log("[Templates Manager] Template não existe, criando novo...")
+            templateData.criado_em = new Date().toISOString()
+            
+            console.log("[Templates Manager] Dados para INSERT:", JSON.stringify(templateData, null, 2))
+            
+            const insertResult = await supabase
+              .from("modelos")
+              .insert(templateData)
+              .select()
+
+            insertError = insertResult.error
+
+            if (insertError) {
+              console.error("[Templates Manager] ❌ Erro ao criar template:", insertError)
+              console.error("[Templates Manager] Detalhes do erro:", JSON.stringify(insertError, null, 2))
+              console.error("[Templates Manager] Dados que tentaram ser inseridos:", JSON.stringify(templateData, null, 2))
+            } else {
+              criados++
+              sincronizados++
+              console.log("[Templates Manager] ✅ Template criado com sucesso:", template.name)
+              console.log("[Templates Manager] Template inserido no banco:", insertResult.data)
+            }
+          }
+        }
+
+        console.log("[Templates Manager] ====== SINCRONIZAÇÃO CONCLUÍDA ======")
+        console.log("[Templates Manager] Total processado:", sincronizados)
+        console.log("[Templates Manager] Criados:", criados)
+        console.log("[Templates Manager] Atualizados:", atualizados)
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            message: "Sincronização concluída",
+            total: sincronizados,
+            criados,
+            atualizados
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        )
+
+      } catch (error: any) {
+        console.error("[Templates Manager] Erro inesperado na sincronização:", error)
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: error.message || "Erro ao sincronizar templates" 
+          }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        )
+      }
+    }
+
+    // ============================================
+    // AÇÃO B: CRIAR NOVO TEMPLATE
+    // ============================================
+    if (action === "create") {
+      console.log("[Templates Manager] ====== CRIANDO NOVO TEMPLATE ======")
+      
+      const { nome, categoria, idioma, componentes } = body
+
+      if (!nome || !categoria || !idioma || !componentes) {
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: "nome, categoria, idioma e componentes são obrigatórios" 
+          }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        )
+      }
+
+      // Validar formato do nome (apenas minúsculas, números e underscore)
+      const nomeRegex = /^[a-z0-9_]+$/
+      if (!nomeRegex.test(nome)) {
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: "Nome do template deve conter apenas letras minúsculas, números e underscore" 
+          }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        )
+      }
+
+      // Montar estrutura para a Meta API
+      const metaComponents: any[] = []
+      
+      if (componentes.header) {
+        metaComponents.push({
+          type: "HEADER",
+          format: componentes.header.format || "TEXT",
+          text: componentes.header.text
+        })
+      }
+      
+      if (componentes.body) {
+        metaComponents.push({
+          type: "BODY",
+          text: componentes.body.text
+        })
+      }
+      
+      if (componentes.footer) {
+        metaComponents.push({
+          type: "FOOTER",
+          text: componentes.footer.text
+        })
+      }
+      
+      if (componentes.buttons && componentes.buttons.length > 0) {
+        metaComponents.push({
+          type: "BUTTONS",
+          buttons: componentes.buttons.map((btn: TemplateButton) => {
+            if (btn.type === "QUICK_REPLY") {
+              return { type: "QUICK_REPLY", text: btn.text }
+            } else if (btn.type === "URL") {
+              return { type: "URL", text: btn.text, url: btn.url }
+            } else if (btn.type === "PHONE_NUMBER") {
+              return { type: "PHONE_NUMBER", text: btn.text, phone_number: btn.phone_number }
+            }
+            return btn
+          })
+        })
+      }
+
+      const metaPayload = {
+        name: nome,
+        language: idioma,
+        category: categoria,
+        components: metaComponents
+      }
+
+      console.log("[Templates Manager] Payload para Meta API:", JSON.stringify(metaPayload, null, 2))
+
+      try {
+        const metaUrl = `https://graph.facebook.com/v18.0/${conexao.id_waba}/message_templates?access_token=${conexao.token_acesso}`
+        console.log("[Templates Manager] Chamando API da Meta para criar template...")
+        
+        const response = await fetch(metaUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(metaPayload)
+        })
+
+        const data = await response.json()
+
+        if (!response.ok || data.error) {
+          console.error("[Templates Manager] Erro na API da Meta:", data.error)
+          return new Response(
+            JSON.stringify({ 
+              success: false, 
+              error: data.error?.message || "Erro ao criar template na Meta" 
+            }),
+            { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          )
+        }
+
+        console.log("[Templates Manager] ✅ Template criado na Meta:", data.id)
+
+        // Salvar no banco de dados
+        const templateData = {
+          id_meta: data.id,
+          id_empresa: id_empresa,
+          nome: nome,
+          idioma: idioma,
+          categoria: categoria,
+          componentes: componentes,
+          status: "PENDING",
+          motivo_rejeicao: null,
+          criado_em: new Date().toISOString(),
+          atualizado_em: new Date().toISOString()
+        }
+
+        const { data: insertedData, error: insertError } = await supabase
+          .from("modelos")
+          .insert(templateData)
+          .select()
+
+        if (insertError) {
+          console.error("[Templates Manager] Erro ao salvar template no banco:", insertError)
+          return new Response(
+            JSON.stringify({ 
+              success: false, 
+              error: "Template criado na Meta mas falhou ao salvar no banco: " + insertError.message 
+            }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          )
+        }
+
+        console.log("[Templates Manager] ✅ Template salvo no banco:", insertedData)
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            message: "Template criado com sucesso",
+            template_id: data.id,
+            template: insertedData
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        )
+
+      } catch (error: any) {
+        console.error("[Templates Manager] Erro inesperado ao criar template:", error)
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: error.message || "Erro ao criar template" 
+          }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        )
+      }
+    }
+
+    return new Response(
+      JSON.stringify({ success: false, error: "Ação não reconhecida" }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    )
+
+  } catch (error: any) {
+    console.error("[Templates Manager] Erro geral:", error)
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        error: error.message || "Erro interno do servidor" 
+      }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    )
+  }
+})
+

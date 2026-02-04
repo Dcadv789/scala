@@ -40,28 +40,28 @@ export function FeaturesSection() {
     <section className="relative w-full px-4 py-16 sm:px-6 md:px-12 md:py-24">
   <div className="flex items-center justify-center">
       <div className="w-full max-w-6xl">
-        <div className="mb-8 text-center">
-          <h2 className="mb-4 font-sans text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
-            Tudo que voce precisa em uma plataforma
+        <div className="mb-12 text-center">
+          <h2 className="mb-6 font-sans text-3xl font-semibold tracking-tight text-foreground md:text-4xl lg:text-5xl">
+            Tudo que você precisa em uma plataforma
           </h2>
-          <p className="mx-auto max-w-2xl text-base text-foreground/80 md:text-lg">
-            Recursos poderosos para escalar suas vendas no WhatsApp com seguranca e estabilidade
+          <p className="mx-auto max-w-2xl text-base text-foreground/80 md:text-lg lg:text-xl">
+            Recursos poderosos para escalar suas vendas no WhatsApp com segurança e estabilidade
           </p>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {features.map((feature) => {
             const Icon = feature.icon
             return (
               <div
                 key={feature.title}
-                className="group rounded-xl border border-foreground/10 bg-foreground/5 p-5 backdrop-blur-sm transition-all hover:border-primary/50 hover:bg-foreground/10"
+                className="group rounded-xl border border-foreground/10 bg-foreground/5 p-6 backdrop-blur-sm transition-all hover:border-primary/50 hover:bg-foreground/10"
               >
-                <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary/20 text-primary">
-                  <Icon className="h-5 w-5" />
+                <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-lg bg-primary/20 text-primary">
+                  <Icon className="h-6 w-6" />
                 </div>
-                <h3 className="mb-2 font-sans text-base font-semibold text-foreground">{feature.title}</h3>
-                <p className="text-sm leading-relaxed text-foreground/70">{feature.description}</p>
+                <h3 className="mb-3 font-sans text-lg font-semibold text-foreground md:text-xl">{feature.title}</h3>
+                <p className="text-sm leading-relaxed text-foreground/70 md:text-base">{feature.description}</p>
               </div>
             )
           })}

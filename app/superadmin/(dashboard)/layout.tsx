@@ -1,12 +1,9 @@
 "use client"
 
 import React from "react"
-
 import { useEffect, useState } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import Link from "next/link"
-import { Button } from "@/components/ui/button"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Shield,
   LayoutDashboard,
@@ -26,7 +23,6 @@ import {
   ChevronRight,
   Building2,
 } from "lucide-react"
-import { cn } from "@/lib/utils"
 
 const navItems = [
   { href: "/superadmin", icon: LayoutDashboard, label: "Dashboard" },
@@ -72,8 +68,21 @@ export default function SuperAdminLayout({
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-500" />
+      <div style={{
+        minHeight: '100vh',
+        backgroundColor: 'hsl(var(--background))',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        <div style={{
+          width: '32px',
+          height: '32px',
+          border: '2px solid hsl(var(--primary))',
+          borderTopColor: 'transparent',
+          borderRadius: '50%',
+          animation: 'spin 1s linear infinite'
+        }}></div>
       </div>
     )
   }
@@ -82,78 +91,212 @@ export default function SuperAdminLayout({
     return null
   }
 
-  return (
-    <div className="flex h-screen bg-background">
-      {/* Sidebar */}
-      <aside
-        className={cn(
-          "relative flex flex-col border-r border-red-500/20 bg-card/50 transition-all duration-300",
-          collapsed ? "w-16" : "w-64"
-        )}
-      >
-        {/* Logo */}
-        <div className="flex h-16 items-center justify-between border-b border-red-500/20 px-4">
-          {!collapsed && (
-            <div className="flex items-center gap-2">
-              <Shield className="h-6 w-6 text-red-500" />
-              <span className="font-bold text-lg">SuperAdmin</span>
-            </div>
-          )}
-          {collapsed && <Shield className="h-6 w-6 text-red-500 mx-auto" />}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setCollapsed(!collapsed)}
-            className="h-8 w-8"
-          >
-            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-          </Button>
-        </div>
+  const sidebarWidth = collapsed ? 64 : 256
 
-        {/* Navigation */}
-        <ScrollArea className="flex-1 px-2 py-4">
-          <nav className="space-y-1">
+  return (
+    <>
+      <style jsx>{`
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+      <div style={{
+        display: 'flex',
+        height: '100vh',
+        backgroundColor: 'hsl(var(--background))',
+        overflow: 'hidden'
+      }}>
+        {/* Sidebar - HTML PURO */}
+        <aside
+          style={{
+            width: `${sidebarWidth}px`,
+            minWidth: `${sidebarWidth}px`,
+            height: '100vh',
+            backgroundColor: 'hsl(var(--card))',
+            borderRight: '1px solid hsl(var(--border))',
+            display: 'flex',
+            flexDirection: 'column',
+            position: 'relative',
+            zIndex: 10,
+            flexShrink: 0
+          }}
+        >
+          {/* Logo */}
+          <div style={{
+            height: '64px',
+            minHeight: '64px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '0 16px',
+            borderBottom: '1px solid hsl(var(--border))',
+            backgroundColor: 'hsl(var(--card))'
+          }}>
+            {!collapsed && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <Shield style={{ width: '24px', height: '24px', color: '#ef4444' }} />
+                <span style={{
+                  fontSize: '18px',
+                  fontWeight: 'bold',
+                  color: 'hsl(var(--foreground))'
+                }}>
+                  SuperAdmin
+                </span>
+              </div>
+            )}
+            {collapsed && (
+              <Shield style={{ 
+                width: '24px', 
+                height: '24px', 
+                color: '#ef4444',
+                margin: '0 auto'
+              }} />
+            )}
+            <button
+              onClick={() => setCollapsed(!collapsed)}
+              style={{
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: 'transparent',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                color: 'hsl(var(--foreground))'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'hsl(var(--accent))'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent'
+              }}
+            >
+              {collapsed ? (
+                <ChevronRight style={{ width: '16px', height: '16px' }} />
+              ) : (
+                <ChevronLeft style={{ width: '16px', height: '16px' }} />
+              )}
+            </button>
+          </div>
+
+          {/* Navigation */}
+          <div style={{
+            flex: 1,
+            overflowY: 'auto',
+            padding: '16px 8px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '4px'
+          }}>
             {navItems.map((item) => {
               const isActive = pathname === item.href
+              const Icon = item.icon
+              
               return (
-                <Link key={item.href} href={item.href}>
-                  <Button
-                    variant={isActive ? "secondary" : "ghost"}
-                    className={cn(
-                      "w-full justify-start gap-3",
-                      isActive && "bg-red-500/10 text-red-500 hover:bg-red-500/20",
-                      collapsed && "justify-center px-2"
-                    )}
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  style={{
+                    display: 'block',
+                    textDecoration: 'none',
+                    width: '100%'
+                  }}
+                >
+                  <button
+                    style={{
+                      width: '100%',
+                      height: '40px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      padding: collapsed ? '0 8px' : '0 12px',
+                      justifyContent: collapsed ? 'center' : 'flex-start',
+                      backgroundColor: isActive ? 'rgba(239, 68, 68, 0.1)' : 'transparent',
+                      color: isActive ? '#ef4444' : 'hsl(var(--foreground))',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                      transition: 'all 0.2s'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isActive) {
+                        e.currentTarget.style.backgroundColor = 'hsl(var(--accent))'
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isActive) {
+                        e.currentTarget.style.backgroundColor = 'transparent'
+                      }
+                    }}
                   >
-                    <item.icon className="h-4 w-4 shrink-0" />
-                    {!collapsed && <span>{item.label}</span>}
-                  </Button>
+                    <Icon style={{ 
+                      width: '16px', 
+                      height: '16px',
+                      flexShrink: 0
+                    }} />
+                    {!collapsed && (
+                      <span style={{ whiteSpace: 'nowrap' }}>{item.label}</span>
+                    )}
+                  </button>
                 </Link>
               )
             })}
-          </nav>
-        </ScrollArea>
+          </div>
 
-        {/* Logout */}
-        <div className="border-t border-red-500/20 p-4">
-          <Button
-            variant="ghost"
-            className={cn(
-              "w-full justify-start gap-3 text-red-500 hover:bg-red-500/10",
-              collapsed && "justify-center px-2"
-            )}
-            onClick={handleLogout}
-          >
-            <LogOut className="h-4 w-4" />
-            {!collapsed && <span>Sair</span>}
-          </Button>
-        </div>
-      </aside>
+          {/* Logout */}
+          <div style={{
+            borderTop: '1px solid hsl(var(--border))',
+            padding: '16px',
+            display: 'flex'
+          }}>
+            <button
+              onClick={handleLogout}
+              style={{
+                width: '100%',
+                height: '40px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: collapsed ? '0 8px' : '0 12px',
+                justifyContent: collapsed ? 'center' : 'flex-start',
+                backgroundColor: 'transparent',
+                color: '#ef4444',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.1)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent'
+              }}
+            >
+              <LogOut style={{ width: '16px', height: '16px', flexShrink: 0 }} />
+              {!collapsed && <span>Sair</span>}
+            </button>
+          </div>
+        </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto">
-        {children}
-      </main>
-    </div>
+        {/* Main Content */}
+        <main style={{
+          flex: 1,
+          overflowY: 'auto',
+          minWidth: 0,
+          backgroundColor: 'hsl(var(--background))'
+        }}>
+          {children}
+        </main>
+      </div>
+    </>
   )
 }

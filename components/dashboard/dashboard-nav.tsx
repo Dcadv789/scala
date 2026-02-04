@@ -18,7 +18,6 @@ import {
   Volume2,
   Download,
 } from "lucide-react"
-import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { getCurrentUser } from "@/lib/store"
 import { useEffect, useState } from "react"
@@ -60,7 +59,7 @@ export function DashboardNav({ isOpen, onToggle }: DashboardNavProps) {
       <div className="flex h-16 items-center justify-between border-b border-border px-4">
         {isOpen && (
           <Link href="/dashboard" className="flex items-center">
-            <Image src="/zap-logo.png" alt="ScalaZap" width={120} height={40} className="h-8 w-auto" />
+            <span className="text-2xl font-bold text-primary">ScalaZap</span>
           </Link>
         )}
         <Button variant="ghost" size="icon" onClick={onToggle} className={cn("shrink-0", !isOpen && "mx-auto")}>

@@ -225,3 +225,76 @@ html {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* =================================================
+   REMOVER QUALQUER EFEITO DE CURSOR CUSTOMIZADO
+   ================================================= */
+
+/* Remover qualquer elemento de cursor customizado */
+/* ATENÇÃO: Não esconder elementos com cursor-pointer do Tailwind, apenas elementos de cursor customizado */
+*[class*="custom-cursor"],
+*[class*="CustomCursor"],
+*[id*="custom-cursor"],
+*[id*="CustomCursor"],
+div[data-custom-cursor],
+div[data-cursor-custom] {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+}
+
+/* Forçar cursor padrão do navegador */
+*, *::before, *::after {
+  cursor: default !important;
+}
+
+html, body {
+  cursor: default !important;
+}
+
+/* Cursor pointer para elementos clicáveis */
+a, 
+button, 
+[role="button"], 
+input[type="submit"], 
+input[type="button"],
+.cursor-pointer,
+[onclick] {
+  cursor: pointer !important;
+}
+
+/* Cursor text para campos de entrada */
+input[type="text"], 
+input[type="email"], 
+input[type="password"], 
+input[type="number"],
+textarea, 
+select {
+  cursor: text !important;
+}
+
+/* Garantir que não há efeitos de blend ou filtros no cursor */
+body * {
+  mix-blend-mode: normal !important;
+}
+
+/* =================================================
+   ANIMAÇÃO MARQUEE (CARROSSEL INFINITO)
+   ================================================= */
+
+@keyframes marquee {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-marquee {
+  animation: marquee 60s linear infinite;
+}
+
+.animate-marquee:hover {
+  animation-play-state: paused;
+}

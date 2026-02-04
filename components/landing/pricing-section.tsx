@@ -76,16 +76,16 @@ export function PricingSection() {
     <section className="relative w-full px-4 py-16 sm:px-6 md:px-12 md:py-24">
       <div className="flex items-center justify-center">
         <div className="w-full max-w-6xl">
-        <div className="mb-8 text-center">
-          <Badge className="mb-3 bg-primary/20 text-primary border-primary/30">
-            <Zap className="w-3 h-3 mr-1" />
+        <div className="mb-12 text-center">
+          <Badge className="mb-4 bg-primary/20 text-primary border-primary/30 text-sm px-4 py-2">
+            <Zap className="w-4 h-4 mr-1.5" />
             Primeira mensalidade com desconto
           </Badge>
-          <h2 className="mb-4 font-sans text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
+          <h2 className="mb-6 font-sans text-3xl font-semibold tracking-tight text-foreground md:text-4xl lg:text-5xl">
             Planos para cada necessidade
           </h2>
-          <p className="mx-auto max-w-2xl text-base text-foreground/80 md:text-lg">
-            Escolha o plano ideal para o tamanho da sua operacao.
+          <p className="mx-auto max-w-2xl text-base text-foreground/80 md:text-lg lg:text-xl">
+            Escolha o plano ideal para o tamanho da sua operação.
           </p>
         </div>
 
@@ -108,21 +108,21 @@ export function PricingSection() {
               )}
 
               <div className="mb-6">
-                <h3 className="mb-2 font-sans text-xl font-semibold text-foreground">{plan.name}</h3>
-                <p className="mb-4 text-sm text-foreground/70">{plan.description}</p>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-bold text-primary">{plan.promoPrice}</span>
-                  <span className="text-lg text-foreground/50 line-through">{plan.price}</span>
+                <h3 className="mb-3 font-sans text-xl font-semibold text-foreground md:text-2xl">{plan.name}</h3>
+                <p className="mb-4 text-sm text-foreground/70 md:text-base">{plan.description}</p>
+                <div className="flex items-baseline gap-3">
+                  <span className="text-3xl font-bold text-primary md:text-4xl">{plan.promoPrice}</span>
+                  <span className="text-lg text-foreground/50 line-through md:text-xl">{plan.price}</span>
                 </div>
-                <p className="text-xs text-foreground/60 mt-1">
+                <p className="text-xs text-foreground/60 mt-2 md:text-sm">
                   Primeira mensalidade - depois {plan.price}{plan.period}
                 </p>
               </div>
 
               <ul className="mb-6 space-y-3">
                 {plan.features.map((feature) => (
-                  <li key={feature} className="flex items-start gap-2">
-                    <Check className="h-5 w-5 shrink-0 text-primary" />
+                  <li key={feature} className="flex items-start gap-3">
+                    <Check className="h-5 w-5 shrink-0 text-primary mt-0.5" />
                     <span className="text-sm text-foreground/80">{feature}</span>
                   </li>
                 ))}

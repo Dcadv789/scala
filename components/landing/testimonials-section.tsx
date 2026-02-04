@@ -120,24 +120,24 @@ export function TestimonialsSection() {
     <section className="relative w-full px-3 py-16 sm:px-4 md:px-8 md:py-24">
       <div className="flex items-center justify-center">
         <div className="w-full max-w-7xl">
-          <div className="mb-4 text-center">
-            <Badge className="bg-red-500/20 text-red-400 border-red-500/30 mb-2 text-[10px]">
+          <div className="mb-12 text-center">
+            <Badge className="bg-[#0d1a1f]/20 text-[#0d1a1f] border-[#0d1a1f]/30 mb-4 text-sm px-4 py-2">
               Resultados Reais
             </Badge>
-            <h2 className="font-sans text-xl font-semibold tracking-tight text-foreground md:text-2xl">
-              Quem Usa, <span className="text-primary">Aprova</span>
+            <h2 className="font-sans text-3xl font-semibold tracking-tight text-[#0d1a1f] md:text-4xl lg:text-5xl">
+              Quem Usa, <span className="text-white drop-shadow-lg">Aprova</span>
             </h2>
           </div>
 
-          <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {testimonials.map((testimonial) => (
               <div
                 key={testimonial.name}
-                className="rounded-lg border border-foreground/10 bg-foreground/5 p-2 backdrop-blur-sm hover:border-foreground/20 transition-colors"
+                className="rounded-xl border border-white/20 bg-[#0d1a1f]/95 p-5 backdrop-blur-sm hover:border-white/30 hover:bg-[#0d1a1f] transition-colors"
               >
                 {/* Header with photo and info */}
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="relative w-7 h-7 rounded-full overflow-hidden flex-shrink-0">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="relative w-10 h-10 rounded-full overflow-hidden flex-shrink-0">
                     <Image
                       src={testimonial.image || "/placeholder.svg"}
                       alt={testimonial.name}
@@ -147,25 +147,25 @@ export function TestimonialsSection() {
                     />
                   </div>
                   <div className="min-w-0">
-                    <p className="font-medium text-foreground text-[10px] truncate">{testimonial.name}</p>
-                    <p className="text-[9px] text-foreground/60 truncate">{testimonial.role}</p>
+                    <p className="font-medium text-white text-sm truncate">{testimonial.name}</p>
+                    <p className="text-xs text-white/60 truncate">{testimonial.role}</p>
                   </div>
                 </div>
 
                 {/* Metric Badge */}
-                <Badge className={`${testimonial.metricColor} text-white border-0 text-[9px] mb-1.5 px-1.5 py-0`}>
+                <Badge className={`${testimonial.metricColor} text-white border-0 text-xs mb-3 px-2 py-0.5`}>
                   {testimonial.metric}
                 </Badge>
 
                 {/* Content */}
-                <p className="text-[10px] leading-tight text-foreground/80 mb-1.5 line-clamp-2">
+                <p className="text-sm leading-relaxed text-white/80 mb-3 line-clamp-3">
                   "{testimonial.content}"
                 </p>
 
                 {/* Stars */}
-                <div className="flex gap-0.5">
+                <div className="flex gap-1">
                   {Array.from({ length: testimonial.rating }).map((_, i) => (
-                    <Star key={i} className="h-2.5 w-2.5 fill-yellow-500 text-yellow-500" />
+                    <Star key={i} className="h-3.5 w-3.5 fill-yellow-500 text-yellow-500" />
                   ))}
                 </div>
               </div>

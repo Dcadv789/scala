@@ -25,11 +25,24 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    console.log("[Admin Membros GET] Buscando membros da empresa:", empresaId)
+    
     const { data: membros, error } = await supabase
       .from("membros")
-      .select("*")
+      .select(`
+        *,
+        perfis!fk_membros_perfil (
+          id,
+          nome_completo,
+          email,
+          telefone,
+          ativo
+        )
+      `)
       .eq("id_empresa", empresaId)
       .order("criado_em", { ascending: false })
+    
+    console.log("[Admin Membros GET] Membros encontrados:", membros?.length || 0)
 
     if (error) {
       console.error("Error fetching membros:", error)
@@ -272,38 +285,90 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    console.log("[Admin Membros] ✅ Prosseguindo com criação do membro.")
+    console.log("[Admin Membros] ✅ Prosseguindo com criação do perfil e membro.")
     console.log("[Admin Membros] id_usuario (mesmo ID do Supabase Auth):", userId)
 
-    // Criar membro na tabela membros
-    // IMPORTANTE: id_usuario DEVE ser o mesmo ID do Supabase Auth (auth.users.id)
+    // PASSO 1: Verificar se o perfil já existe (pode já existir se o usuário existe em outra empresa)
+    console.log("[Admin Membros] Verificando se perfil já existe...")
+    const { data: perfilExistente } = await supabase
+      .from("perfis")
+      .select("id")
+      .eq("id", userId)
+      .maybeSingle()
+    
+    let perfilId = perfilExistente?.id
+    
+    // Se não existe perfil, criar
+    if (!perfilExistente) {
+      console.log("[Admin Membros] Criando perfil na tabela perfis...")
+      const { data: novoPerfil, error: perfilError } = await supabase
+        .from("perfis")
+        .insert({
+          id: userId, // O ID do perfil é o mesmo do auth.users
+          nome_completo: nome,
+          email: email.toLowerCase().trim(),
+          ativo: true
+        })
+        .select()
+        .single()
+
+      if (perfilError) {
+        console.error("[Admin Membros] ERRO ao criar perfil:", perfilError)
+        
+        // Rollback: remover usuário do Auth se falhou
+        if (userId && !id_usuario) {
+          console.log("[Admin Membros] Fazendo rollback - removendo usuário do Auth...")
+          try {
+            await supabase.auth.admin.deleteUser(userId)
+            console.log("[Admin Membros] Rollback concluído")
+          } catch (rollbackError) {
+            console.error("[Admin Membros] Erro ao fazer rollback:", rollbackError)
+          }
+        }
+        
+        return NextResponse.json({ 
+          error: `Falha ao criar perfil do usuário: ${perfilError.message}` 
+        }, { status: 500 })
+      }
+      
+      perfilId = novoPerfil.id
+      console.log("[Admin Membros] ✅ Perfil criado com sucesso! ID:", perfilId)
+    } else {
+      console.log("[Admin Membros] ✅ Perfil já existe, reutilizando ID:", perfilId)
+    }
+
+    // PASSO 2: Criar membro na tabela membros
     console.log("[Admin Membros] Criando membro na tabela membros...")
-    console.log("[Admin Membros] id_usuario (ID do Supabase Auth):", userId)
-    console.log("[Admin Membros] Este ID é o mesmo de auth.users.id e será usado para login")
+    console.log("[Admin Membros] id_perfil:", perfilId)
+    console.log("[Admin Membros] id_empresa:", id_empresa)
     
     const { data: membro, error } = await supabase
       .from("membros")
       .insert({
         id_empresa,
-        nome,
-        email: email.toLowerCase().trim(),
+        id_perfil: perfilId, // FK para perfis (NÃO id_usuario!)
         cargo: cargo || "membro",
-        id_usuario: userId, // MESMO ID do Supabase Auth (auth.users.id) - usado para login
-        eh_superadmin: false,
         ativo: true
       })
       .select()
       .single()
 
     if (error) {
-      console.error("[Admin Membros] Erro ao criar membro na tabela:", error)
+      console.error("[Admin Membros] ERRO ao criar membro na tabela:", error)
       
-      // Se falhar ao criar membro, tentar remover o usuário criado no Auth (rollback)
+      // Se falhar ao criar membro, tentar fazer rollback
       if (userId && !id_usuario) {
-        console.log("[Admin Membros] Tentando fazer rollback - removendo usuário do Auth:", userId)
+        console.log("[Admin Membros] Fazendo rollback completo...")
         try {
+          // Remover perfil se foi criado nesta transação
+          if (!perfilExistente) {
+            await supabase.from("perfis").delete().eq("id", userId)
+            console.log("[Admin Membros] Perfil removido")
+          }
+          // Remover usuário do Auth
           await supabase.auth.admin.deleteUser(userId)
-          console.log("[Admin Membros] Rollback concluído - usuário removido do Auth")
+          console.log("[Admin Membros] Usuário removido do Auth")
+          console.log("[Admin Membros] Rollback concluído")
         } catch (rollbackError) {
           console.error("[Admin Membros] Erro ao fazer rollback:", rollbackError)
         }
@@ -316,23 +381,46 @@ export async function POST(request: NextRequest) {
 
     console.log("[Admin Membros] ✅ Membro criado com sucesso!")
     console.log("[Admin Membros] ID do membro:", membro.id)
-    console.log("[Admin Membros] id_usuario (mesmo ID do Supabase Auth):", membro.id_usuario)
-    console.log("[Admin Membros] Verificação: id_usuario === auth.users.id:", membro.id_usuario === userId)
+    console.log("[Admin Membros] id_perfil:", membro.id_perfil)
+    console.log("[Admin Membros] id_empresa:", membro.id_empresa)
+    console.log("[Admin Membros] Verificação: id_perfil === perfil.id:", membro.id_perfil === perfilId)
     
-    // Validação final: garantir que o id_usuario salvo é o mesmo do Auth
-    if (membro.id_usuario !== userId) {
-      console.error("[Admin Membros] ⚠️ ATENÇÃO: id_usuario salvo não corresponde ao ID do Auth!")
-      console.error("[Admin Membros] ID do Auth:", userId)
-      console.error("[Admin Membros] ID salvo no membro:", membro.id_usuario)
+    // Validação final
+    if (membro.id_perfil !== perfilId) {
+      console.error("[Admin Membros] ⚠️ ATENÇÃO: id_perfil salvo não corresponde ao perfil criado!")
+      console.error("[Admin Membros] Perfil ID esperado:", perfilId)
+      console.error("[Admin Membros] ID salvo no membro:", membro.id_perfil)
     } else {
-      console.log("[Admin Membros] ✅ Confirmação: id_usuario está correto e corresponde ao Supabase Auth")
+      console.log("[Admin Membros] ✅ Confirmação: id_perfil está correto")
     }
+
+    // Buscar dados completos do membro com perfil
+    const { data: membroCompleto } = await supabase
+      .from("membros")
+      .select(`
+        *,
+        perfis!fk_membros_perfil (
+          id,
+          nome_completo,
+          email
+        )
+      `)
+      .eq("id", membro.id)
+      .single()
+
+    console.log("[Admin Membros] ✅ Estrutura completa:", {
+      auth_user_id: userId,
+      perfil_id: perfilId,
+      membro_id: membro.id,
+      empresa_id: id_empresa
+    })
 
     return NextResponse.json({
       success: true,
-      membro,
-      message: "Membro criado com sucesso. Um usuário foi criado no sistema de autenticação com login e senha. O id_usuario corresponde ao ID do Supabase Auth.",
-      auth_user_id: userId // Retornar o ID do Auth para confirmação
+      membro: membroCompleto || membro,
+      message: "Membro criado com sucesso! Usuário, perfil e vínculo com a empresa foram configurados.",
+      auth_user_id: userId,
+      perfil_id: perfilId
     })
   } catch (error: any) {
     console.error("[Admin Membros] Erro:", error)
@@ -340,35 +428,111 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PUT - Atualizar membro
+// PUT - Atualizar membro e perfil
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json()
-    const { id, ...updates } = body
+    const { id, id_perfil, nome_completo, email, telefone, cargo, ativo } = body
+
+    console.log("[Admin Membros PUT] Iniciando atualização...", {
+      membro_id: id,
+      perfil_id: id_perfil,
+      nome_completo,
+      email,
+      cargo,
+      ativo
+    })
 
     if (!id) {
-      return NextResponse.json({ error: "ID é obrigatório" }, { status: 400 })
+      return NextResponse.json({ error: "ID do membro é obrigatório" }, { status: 400 })
     }
 
-    const { data: membro, error } = await supabase
+    if (!id_perfil) {
+      return NextResponse.json({ error: "ID do perfil é obrigatório" }, { status: 400 })
+    }
+
+    // PASSO 1: Atualizar perfil (se houver dados de perfil)
+    if (nome_completo || email || telefone !== undefined) {
+      console.log("[Admin Membros PUT] Atualizando perfil...")
+      
+      const perfilUpdates: any = {}
+      if (nome_completo) perfilUpdates.nome_completo = nome_completo
+      if (email) perfilUpdates.email = email.toLowerCase().trim()
+      if (telefone !== undefined) perfilUpdates.telefone = telefone || null
+      
+      const { data: perfilAtualizado, error: perfilError } = await supabase
+        .from("perfis")
+        .update(perfilUpdates)
+        .eq("id", id_perfil)
+        .select()
+        .single()
+
+      if (perfilError) {
+        console.error("[Admin Membros PUT] Erro ao atualizar perfil:", perfilError)
+        return NextResponse.json({ 
+          error: `Falha ao atualizar perfil: ${perfilError.message}` 
+        }, { status: 500 })
+      }
+
+      console.log("[Admin Membros PUT] ✅ Perfil atualizado:", perfilAtualizado.id)
+    }
+
+    // PASSO 2: Atualizar membro
+    console.log("[Admin Membros PUT] Atualizando membro...")
+    
+    const membroUpdates: any = {}
+    if (cargo) membroUpdates.cargo = cargo
+    if (ativo !== undefined) membroUpdates.ativo = ativo
+    
+    const { data: membroAtualizado, error: membroError } = await supabase
       .from("membros")
-      .update(updates)
+      .update(membroUpdates)
       .eq("id", id)
       .select()
       .single()
 
-    if (error) {
-      console.error("Error updating membro:", error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+    if (membroError) {
+      console.error("[Admin Membros PUT] Erro ao atualizar membro:", membroError)
+      return NextResponse.json({ 
+        error: `Falha ao atualizar membro: ${membroError.message}` 
+      }, { status: 500 })
     }
+
+    console.log("[Admin Membros PUT] ✅ Membro atualizado:", membroAtualizado.id)
+
+    // PASSO 3: Buscar dados completos do membro com perfil
+    const { data: membroCompleto, error: fetchError } = await supabase
+      .from("membros")
+      .select(`
+        *,
+        perfis!fk_membros_perfil (
+          id,
+          nome_completo,
+          email,
+          telefone,
+          ativo
+        )
+      `)
+      .eq("id", id)
+      .single()
+
+    if (fetchError) {
+      console.error("[Admin Membros PUT] Erro ao buscar dados completos:", fetchError)
+      // Não falhar aqui, retornar dados parciais
+    }
+
+    console.log("[Admin Membros PUT] ✅ Atualização completa!")
 
     return NextResponse.json({
       success: true,
-      membro
+      membro: membroCompleto || membroAtualizado,
+      message: "Membro e perfil atualizados com sucesso"
     })
   } catch (error: any) {
-    console.error("Error in PUT /api/admin/empresas/membros:", error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    console.error("[Admin Membros PUT] Erro:", error)
+    return NextResponse.json({ 
+      error: error.message || "Erro interno do servidor" 
+    }, { status: 500 })
   }
 }
 

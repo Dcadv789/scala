@@ -90,6 +90,7 @@ export function MagneticButton({
 
   const classNames = `
     relative overflow-hidden rounded-full font-medium
+    inline-flex items-center justify-center
     transition-all duration-300 ease-out will-change-transform
     ${variants[variant]}
     ${sizes[size]}
@@ -114,7 +115,7 @@ export function MagneticButton({
         className={classNames}
         {...commonProps}
       >
-        <span className="relative z-10">{children}</span>
+        {children}
       </Link>
     )
   }
@@ -127,7 +128,7 @@ export function MagneticButton({
       className={classNames}
       {...commonProps}
     >
-      <span className="relative z-10">{children}</span>
+      {children}
     </button>
   )
 }

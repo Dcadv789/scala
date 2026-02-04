@@ -69,72 +69,72 @@ export function DownloadPageSection() {
       <div className="flex items-center justify-center">
         <div className="w-full max-w-5xl">
           {/* Header */}
-          <div className="text-center mb-4">
-            <Badge className="mb-2 bg-primary/20 text-primary border-primary/30 text-[10px]">
-              Disponivel nos planos Professional e Ilimitado
+          <div className="text-center mb-12">
+            <Badge className="mb-4 bg-primary/20 text-primary border-primary/30 text-sm px-4 py-2">
+              Disponível nos planos Professional e Ilimitado
             </Badge>
-            <h2 className="text-xl md:text-2xl font-bold text-foreground mb-1">
+            <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground mb-6">
               Instale o ScalaZap no seu dispositivo
             </h2>
-            <p className="text-foreground/70 text-xs max-w-xl mx-auto">
+            <p className="text-foreground/70 text-lg md:text-xl max-w-2xl mx-auto">
               Transforme o ScalaZap em um app nativo e atenda seus clientes de qualquer lugar.
             </p>
           </div>
 
           {/* Benefits */}
-          <div className="grid grid-cols-3 gap-2 mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
             {benefits.map((benefit) => (
-              <div key={benefit.title} className="flex items-center gap-2 p-2 rounded-lg bg-foreground/5 border border-foreground/10">
-                <div className="w-7 h-7 rounded-md bg-primary/20 flex items-center justify-center shrink-0">
-                  <benefit.icon className="w-3.5 h-3.5 text-primary" />
+              <div key={benefit.title} className="flex items-center gap-3 p-4 rounded-lg bg-foreground/5 border border-foreground/10">
+                <div className="w-10 h-10 rounded-md bg-primary/20 flex items-center justify-center shrink-0">
+                  <benefit.icon className="w-5 h-5 text-primary" />
                 </div>
                 <div className="min-w-0">
-                  <h4 className="font-medium text-foreground text-[10px] truncate">{benefit.title}</h4>
-                  <p className="text-[9px] text-foreground/60 truncate">{benefit.description}</p>
+                  <h4 className="font-medium text-foreground text-sm truncate">{benefit.title}</h4>
+                  <p className="text-xs text-foreground/60 truncate">{benefit.description}</p>
                 </div>
               </div>
             ))}
           </div>
 
         {/* Platform Selector + Instructions */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
           {/* Left: Platform Selection */}
           <div>
-            <h3 className="text-sm font-semibold text-foreground mb-2">Selecione seu dispositivo</h3>
-            <div className="grid grid-cols-4 gap-2 mb-3">
+            <h3 className="text-lg font-semibold text-foreground mb-4">Selecione seu dispositivo</h3>
+            <div className="grid grid-cols-4 gap-3 mb-6">
               {platforms.map((platform) => (
                 <button
                   key={platform.id}
                   onClick={() => setSelectedPlatform(platform.id)}
-                  className={`p-2 rounded-lg border-2 transition-all flex flex-col items-center gap-1 ${
+                  className={`p-3 rounded-lg border-2 transition-all flex flex-col items-center gap-2 ${
                     selectedPlatform === platform.id
                       ? "border-primary bg-primary/10"
                       : "border-foreground/10 bg-foreground/5 hover:border-foreground/20"
                   }`}
                 >
-                  <div className={`w-7 h-7 rounded-md ${platform.color} flex items-center justify-center`}>
-                    <platform.icon className="w-3.5 h-3.5 text-white" />
+                  <div className={`w-10 h-10 rounded-md ${platform.color} flex items-center justify-center`}>
+                    <platform.icon className="w-5 h-5 text-white" />
                   </div>
-                  <span className="font-medium text-foreground text-[10px]">{platform.name}</span>
+                  <span className="font-medium text-foreground text-sm">{platform.name}</span>
                 </button>
               ))}
             </div>
 
             {/* Instructions */}
             <Card className="bg-foreground/5 border-foreground/10">
-              <CardContent className="p-3">
-                <h4 className="font-semibold text-foreground text-xs mb-2">
+              <CardContent className="p-5">
+                <h4 className="font-semibold text-foreground text-base mb-4">
                   Como instalar no {platforms.find(p => p.id === selectedPlatform)?.name}
                 </h4>
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {instructions[selectedPlatform].map((instruction) => (
-                    <div key={instruction.step} className="flex gap-2">
-                      <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-                        <span className="text-[10px] font-bold text-primary">{instruction.step}</span>
+                    <div key={instruction.step} className="flex gap-3">
+                      <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+                        <span className="text-sm font-bold text-primary">{instruction.step}</span>
                       </div>
                       <div className="flex-1">
-                        <h5 className="font-medium text-foreground text-[11px]">{instruction.title}</h5>
-                        <p className="text-[9px] text-foreground/60">{instruction.description}</p>
+                        <h5 className="font-medium text-foreground text-sm">{instruction.title}</h5>
+                        <p className="text-xs text-foreground/60">{instruction.description}</p>
                       </div>
                     </div>
                   ))}
@@ -273,13 +273,13 @@ export function DownloadPageSection() {
         </div>
 
         {/* CTA */}
-        <div className="mt-4 text-center">
-          <p className="text-foreground/60 text-[10px] mb-2">
-            Disponivel para assinantes Professional e Ilimitado
+        <div className="mt-8 text-center">
+          <p className="text-foreground/60 text-base md:text-lg mb-4">
+            Disponível para assinantes Professional e Ilimitado
           </p>
           <Button 
-            size="sm" 
-            className="bg-primary hover:bg-primary/90 text-xs"
+            size="lg" 
+            className="bg-primary hover:bg-primary/90 text-base"
             onClick={() => window.location.href = "/dashboard"}
           >
             Acessar minha conta

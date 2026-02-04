@@ -32,17 +32,23 @@ interface Empresa {
   membros_ativos?: number
 }
 
+interface Perfil {
+  id: string
+  nome_completo: string
+  email: string
+  telefone?: string
+  ativo: boolean
+}
+
 interface Membro {
   id: string
   id_empresa: string
-  nome: string
-  email: string
+  id_perfil: string
   cargo: string
-  eh_superadmin: boolean
   ativo: boolean
   criado_em: string
   ultimo_acesso?: string
-  id_usuario?: string
+  perfis?: Perfil // Dados do perfil associado
 }
 
 export default function EmpresasPage() {
@@ -59,6 +65,20 @@ export default function EmpresasPage() {
   const [showAddMembroDialog, setShowAddMembroDialog] = useState(false)
   const [showMembroDetailsDialog, setShowMembroDetailsDialog] = useState(false)
   const [selectedMembro, setSelectedMembro] = useState<Membro | null>(null)
+  const [isEditingMembro, setIsEditingMembro] = useState(false)
+  const [editedMembroData, setEditedMembroData] = useState<{
+    nome_completo: string
+    email: string
+    telefone: string
+    cargo: string
+    ativo: boolean
+  }>({
+    nome_completo: "",
+    email: "",
+    telefone: "",
+    cargo: "membro",
+    ativo: true
+  })
   const [newEmpresa, setNewEmpresa] = useState({ nome: "", email: "", telefone: "", documento: "", plano_atual: "starter" })
   const [newMembro, setNewMembro] = useState({ nome: "", email: "", cargo: "membro", id_usuario: "" })
   const [stats, setStats] = useState({ total: 0, active: 0, pending: 0, cancelled: 0, totalMembros: 0 })
@@ -69,30 +89,57 @@ export default function EmpresasPage() {
   }, [])
 
   const loadEmpresas = async () => {
+    console.log("[Empresas] 🔄 Iniciando carregamento de empresas...")
     setLoading(true)
     try {
+      console.log("[Empresas] 📡 Fazendo requisição para /api/admin/empresas...")
       const response = await fetch("/api/admin/empresas")
+      console.log("[Empresas] 📥 Resposta recebida:", response.status, response.statusText)
+      
       const data = await response.json()
+      console.log("[Empresas] 📦 Dados recebidos:", {
+        success: data.success,
+        total: data.total,
+        empresasCount: data.empresas?.length || 0,
+        empresas: data.empresas
+      })
       
       if (data.success && data.empresas) {
+        console.log("[Empresas] ✅ Dados válidos, processando...")
+        console.log("[Empresas] 📊 Empresas recebidas:", data.empresas.length)
+        data.empresas.forEach((emp: Empresa, index: number) => {
+          console.log(`[Empresas]   ${index + 1}. ${emp.nome} (${emp.id}) - Status: ${emp.status_assinatura}, Plano: ${emp.plano_atual}, Membros: ${emp.total_membros || 0}`)
+        })
+        
         setEmpresas(data.empresas)
+        console.log("[Empresas] ✅ Estado 'empresas' atualizado com", data.empresas.length, "empresas")
+        
         // Calcular estatísticas
         const total = data.empresas.length
         const active = data.empresas.filter((e: Empresa) => e.status_assinatura === "active").length
         const pending = data.empresas.filter((e: Empresa) => e.status_assinatura === "pending").length
         const cancelled = data.empresas.filter((e: Empresa) => e.status_assinatura === "cancelled").length
         const totalMembros = data.empresas.reduce((acc: number, e: Empresa) => acc + (e.total_membros || 0), 0)
+        
+        console.log("[Empresas] 📈 Estatísticas calculadas:", { total, active, pending, cancelled, totalMembros })
         setStats({ total, active, pending, cancelled, totalMembros })
+        console.log("[Empresas] ✅ Estado 'stats' atualizado")
+      } else {
+        console.error("[Empresas] ❌ Dados inválidos ou sem empresas:", data)
+        setEmpresas([])
+        setStats({ total: 0, active: 0, pending: 0, cancelled: 0, totalMembros: 0 })
       }
     } catch (error) {
-      console.error("Error loading empresas:", error)
+      console.error("[Empresas] ❌ Erro ao carregar empresas:", error)
       toast({
         title: "Erro",
         description: "Falha ao carregar empresas",
         variant: "destructive"
       })
+      setEmpresas([])
     } finally {
       setLoading(false)
+      console.log("[Empresas] ✅ Carregamento finalizado, loading = false")
     }
   }
 
@@ -232,7 +279,87 @@ export default function EmpresasPage() {
 
   const handleViewMembroDetails = (membro: Membro) => {
     setSelectedMembro(membro)
+    setIsEditingMembro(false)
+    // Inicializar dados para edição
+    setEditedMembroData({
+      nome_completo: membro.perfis?.nome_completo || "",
+      email: membro.perfis?.email || "",
+      telefone: membro.perfis?.telefone || "",
+      cargo: membro.cargo || "membro",
+      ativo: membro.ativo ?? true
+    })
     setShowMembroDetailsDialog(true)
+  }
+
+  const handleSaveMembro = async () => {
+    console.log("[Edit Membro] Iniciando salvamento...", { selectedMembro, editedMembroData })
+    
+    if (!selectedMembro) {
+      console.error("[Edit Membro] Nenhum membro selecionado")
+      toast({
+        title: "Erro",
+        description: "Nenhum membro selecionado para editar",
+        variant: "destructive"
+      })
+      return
+    }
+
+    if (!editedMembroData.nome_completo || !editedMembroData.email) {
+      console.error("[Edit Membro] Campos obrigatórios faltando")
+      toast({
+        title: "Campos obrigatórios",
+        description: "Nome e email são obrigatórios",
+        variant: "destructive"
+      })
+      return
+    }
+
+    try {
+      console.log("[Edit Membro] Enviando requisição de atualização...")
+      
+      const response = await fetch("/api/admin/empresas/membros", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: selectedMembro.id,
+          id_perfil: selectedMembro.id_perfil,
+          nome_completo: editedMembroData.nome_completo,
+          email: editedMembroData.email,
+          telefone: editedMembroData.telefone,
+          cargo: editedMembroData.cargo,
+          ativo: editedMembroData.ativo
+        })
+      })
+      
+      console.log("[Edit Membro] Resposta recebida:", response.status, response.statusText)
+      
+      const data = await response.json()
+      console.log("[Edit Membro] Dados da resposta:", data)
+      
+      if (data.success) {
+        toast({
+          title: "Membro atualizado",
+          description: `${editedMembroData.nome_completo} foi atualizado com sucesso`
+        })
+        setIsEditingMembro(false)
+        setShowMembroDetailsDialog(false)
+        
+        if (selectedEmpresa) {
+          await loadMembros(selectedEmpresa.id)
+        }
+        loadEmpresas() // Atualizar contador
+      } else {
+        console.error("[Edit Membro] Erro na resposta:", data.error)
+        throw new Error(data.error || "Erro desconhecido")
+      }
+    } catch (error: any) {
+      console.error("[Edit Membro] Erro capturado:", error)
+      toast({
+        title: "Erro",
+        description: error.message || "Falha ao atualizar membro",
+        variant: "destructive"
+      })
+    }
   }
 
   const handleAddEmpresa = async () => {
@@ -374,8 +501,28 @@ export default function EmpresasPage() {
                          (empresa.documento || "").toLowerCase().includes(search.toLowerCase())
     const matchesPlano = filterPlano === "all" || empresa.plano_atual === filterPlano
     const matchesStatus = filterStatus === "all" || empresa.status_assinatura === filterStatus
-    return matchesSearch && matchesPlano && matchesStatus
+    const result = matchesSearch && matchesPlano && matchesStatus
+    return result
   })
+
+  // Log de filtros
+  useEffect(() => {
+    console.log("[Empresas] 🔍 Filtros aplicados:", {
+      search,
+      filterPlano,
+      filterStatus,
+      totalEmpresas: empresas.length,
+      filteredCount: filteredEmpresas.length
+    })
+    if (empresas.length > 0 && filteredEmpresas.length === 0) {
+      console.warn("[Empresas] ⚠️ ATENÇÃO: Há empresas mas nenhuma passou no filtro!")
+      console.log("[Empresas] 📋 Empresas originais:", empresas.map(e => ({
+        nome: e.nome,
+        plano: e.plano_atual,
+        status: e.status_assinatura
+      })))
+    }
+  }, [empresas, search, filterPlano, filterStatus, filteredEmpresas.length])
 
   const getPlanoBadge = (plano: string) => {
     const colors: Record<string, string> = {
@@ -416,6 +563,63 @@ export default function EmpresasPage() {
     }
     return <Badge variant="outline" className={colors[cargo] || colors.membro}>{cargo}</Badge>
   }
+
+  // Log do estado antes de renderizar
+  useEffect(() => {
+    console.log("[Empresas] 🎯 Estado atual do componente:", {
+      empresasCount: empresas.length,
+      filteredCount: filteredEmpresas.length,
+      loading,
+      stats,
+      search,
+      filterPlano,
+      filterStatus
+    })
+  })
+
+  // Verificar elementos no DOM após renderização
+  useEffect(() => {
+    if (!loading && filteredEmpresas.length > 0) {
+      setTimeout(() => {
+        const empresaElements = document.querySelectorAll('[data-empresa-item]')
+        console.log("[Empresas] 🔍 Elementos encontrados no DOM:", empresaElements.length)
+        if (empresaElements.length === 0) {
+          console.error("[Empresas] ❌ NENHUM ELEMENTO ENCONTRADO NO DOM!")
+          console.log("[Empresas] 📋 Tentando encontrar elementos por classe...")
+          const divs = document.querySelectorAll('.divide-y > div')
+          console.log("[Empresas] 📋 Divs encontrados:", divs.length)
+        } else {
+          console.log("[Empresas] ✅ Elementos encontrados no DOM:", empresaElements.length)
+          // Verificar estilos computados do primeiro elemento
+          const firstElement = empresaElements[0] as HTMLElement
+          if (firstElement) {
+            const computedStyle = window.getComputedStyle(firstElement)
+            console.log("[Empresas] 🔍 Estilos computados do primeiro elemento:", {
+              display: computedStyle.display,
+              visibility: computedStyle.visibility,
+              opacity: computedStyle.opacity,
+              height: computedStyle.height,
+              width: computedStyle.width,
+              backgroundColor: computedStyle.backgroundColor,
+              color: computedStyle.color,
+              position: computedStyle.position,
+              zIndex: computedStyle.zIndex,
+              overflow: computedStyle.overflow
+            })
+            // Verificar se o elemento está visível
+            const rect = firstElement.getBoundingClientRect()
+            console.log("[Empresas] 📐 Posição do primeiro elemento:", {
+              top: rect.top,
+              left: rect.left,
+              width: rect.width,
+              height: rect.height,
+              visible: rect.width > 0 && rect.height > 0
+            })
+          }
+        }
+      }, 500)
+    }
+  }, [loading, filteredEmpresas.length])
 
   return (
     <div className="space-y-6 p-6">
@@ -541,51 +745,295 @@ export default function EmpresasPage() {
       </div>
 
       {/* Layout de Duas Colunas */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[calc(100vh-400px)]">
+      <div 
+        className="grid grid-cols-1 lg:grid-cols-2 gap-6"
+        style={{
+          display: 'grid',
+          gap: '24px',
+          minHeight: '600px',
+          height: 'auto',
+          width: '100%'
+        }}
+      >
         {/* Coluna Esquerda - Lista de Empresas */}
-        <Card className="bg-card/50 border-border/50">
-          <CardContent className="p-0 h-full flex flex-col">
-            <div className="p-4 border-b">
-              <h2 className="font-semibold text-lg">Empresas</h2>
-              <p className="text-sm text-muted-foreground">
+        <Card 
+          className="bg-card/50 border-border/50"
+          style={{
+            display: 'flex !important',
+            flexDirection: 'column',
+            backgroundColor: '#1a1a1a',
+            border: '2px solid #333333',
+            borderRadius: '12px',
+            minHeight: '600px',
+            height: 'auto',
+            overflow: 'visible',
+            visibility: 'visible !important',
+            opacity: '1 !important',
+            position: 'relative',
+            zIndex: 1
+          }}
+        >
+          <CardContent 
+            className="p-0 h-full flex flex-col"
+            style={{
+              padding: 0,
+              minHeight: '600px',
+              height: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'visible'
+            }}
+          >
+            <div 
+              className="p-4 border-b"
+              style={{
+                padding: '16px',
+                borderBottom: '1px solid hsl(var(--border))',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px'
+              }}
+            >
+              <h2 
+                className="font-semibold text-lg"
+                style={{
+                  fontWeight: '600',
+                  fontSize: '18px',
+                  color: 'hsl(var(--foreground))',
+                  margin: 0
+                }}
+              >
+                Empresas
+              </h2>
+              <p 
+                className="text-sm text-muted-foreground"
+                style={{
+                  fontSize: '14px',
+                  color: 'hsl(var(--muted-foreground))',
+                  margin: 0
+                }}
+              >
                 {filteredEmpresas.length} empresa{filteredEmpresas.length !== 1 ? "s" : ""} encontrada{filteredEmpresas.length !== 1 ? "s" : ""}
               </p>
             </div>
-            <div className="flex-1 overflow-y-auto">
+            <div 
+              className="flex-1 overflow-y-auto"
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                overflowY: 'auto',
+                overflowX: 'visible',
+                minHeight: '400px',
+                width: '100%',
+                position: 'relative',
+                zIndex: 1
+              }}
+            >
               {loading ? (
-                <div className="flex items-center justify-center p-12">
+                <div 
+                  className="flex items-center justify-center p-12"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '48px'
+                  }}
+                >
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
               ) : filteredEmpresas.length === 0 ? (
-                <div className="flex items-center justify-center p-12 text-muted-foreground">
-                  Nenhuma empresa encontrada
+                <div 
+                  className="flex items-center justify-center p-12 text-muted-foreground"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '48px',
+                    color: 'hsl(var(--muted-foreground))'
+                  }}
+                >
+                  {(() => {
+                    console.log("[Empresas] 🎨 Renderizando: Nenhuma empresa encontrada", {
+                      loading,
+                      empresasLength: empresas.length,
+                      filteredLength: filteredEmpresas.length,
+                      search,
+                      filterPlano,
+                      filterStatus
+                    })
+                    return "Nenhuma empresa encontrada"
+                  })()}
                 </div>
               ) : (
-                <div className="divide-y">
-                  {filteredEmpresas.map((empresa) => {
+                <div 
+                  className="divide-y"
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    width: '100%',
+                    minHeight: '400px',
+                    position: 'relative',
+                    zIndex: 1,
+                    backgroundColor: 'hsl(var(--card))'
+                  }}
+                >
+                  {(() => {
+                    console.log("[Empresas] 🎨 Renderizando lista de empresas:", {
+                      total: filteredEmpresas.length,
+                      empresas: filteredEmpresas.map(e => ({ id: e.id, nome: e.nome }))
+                    })
+                    return null
+                  })()}
+                  {filteredEmpresas.map((empresa, index) => {
                     const isSelected = selectedEmpresa?.id === empresa.id
+                    console.log(`[Empresas] 🎨 Renderizando empresa ${index + 1}/${filteredEmpresas.length}:`, {
+                      id: empresa.id,
+                      nome: empresa.nome,
+                      isSelected
+                    })
                     return (
                       <div
                         key={empresa.id}
-                        onClick={() => handleSelectEmpresa(empresa)}
+                        data-empresa-item={empresa.id}
+                        onClick={() => {
+                          console.log("[Empresas] 👆 Clique na empresa:", empresa.nome)
+                          handleSelectEmpresa(empresa)
+                        }}
                         className={`
                           p-4 cursor-pointer transition-colors hover:bg-muted/50
                           ${isSelected ? "bg-muted border-l-4 border-l-red-500" : ""}
                         `}
+                        style={{
+                          display: 'flex !important',
+                          flexDirection: 'column',
+                          padding: '16px',
+                          cursor: 'pointer',
+                          borderBottom: '1px solid hsl(var(--border))',
+                          backgroundColor: isSelected ? 'hsl(var(--muted))' : 'hsl(var(--card))',
+                          borderLeft: isSelected ? '4px solid #ef4444' : 'none',
+                          transition: 'background-color 0.2s',
+                          minHeight: '100px',
+                          width: '100%',
+                          visibility: 'visible !important',
+                          opacity: '1 !important',
+                          position: 'relative',
+                          zIndex: 10,
+                          marginBottom: '0',
+                          boxSizing: 'border-box'
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isSelected) {
+                            e.currentTarget.style.backgroundColor = 'hsl(var(--muted) / 0.5)'
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isSelected) {
+                            e.currentTarget.style.backgroundColor = 'transparent'
+                          }
+                        }}
                       >
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
-                              <h3 className="font-semibold truncate">{empresa.nome}</h3>
+                        <div 
+                          className="flex items-start justify-between gap-4"
+                          style={{
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            justifyContent: 'space-between',
+                            gap: '16px',
+                            width: '100%'
+                          }}
+                        >
+                          <div 
+                            className="flex-1 min-w-0"
+                            style={{
+                              flex: 1,
+                              minWidth: 0,
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '8px'
+                            }}
+                          >
+                            <div 
+                              className="flex items-center gap-2 mb-2"
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                marginBottom: '8px'
+                              }}
+                            >
+                              <Building2 
+                                className="h-4 w-4 text-muted-foreground shrink-0" 
+                                style={{
+                                  width: '16px',
+                                  height: '16px',
+                                  color: 'hsl(var(--muted-foreground))',
+                                  flexShrink: 0
+                                }}
+                              />
+                              <h3 
+                                className="font-semibold truncate"
+                                style={{
+                                  fontWeight: '600',
+                                  fontSize: '16px',
+                                  color: '#ffffff',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  margin: 0,
+                                  padding: 0
+                                }}
+                              >
+                                {empresa.nome}
+                              </h3>
                             </div>
-                            <p className="text-sm text-muted-foreground truncate">{empresa.email || "-"}</p>
-                            <div className="flex items-center gap-2 mt-2 flex-wrap">
+                            <p 
+                              className="text-sm text-muted-foreground truncate"
+                              style={{
+                                fontSize: '14px',
+                                color: '#cccccc',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                margin: 0,
+                                padding: 0
+                              }}
+                            >
+                              {empresa.email || "-"}
+                            </p>
+                            <div 
+                              className="flex items-center gap-2 mt-2 flex-wrap"
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                marginTop: '8px',
+                                flexWrap: 'wrap'
+                              }}
+                            >
                               {getPlanoBadge(empresa.plano_atual)}
                               {getStatusBadge(empresa.status_assinatura)}
-                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                                <Users className="h-3 w-3" />
-                                <span>{empresa.total_membros || 0} membros</span>
+                              <div 
+                                className="flex items-center gap-1 text-xs text-muted-foreground"
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  fontSize: '12px',
+                                  color: '#aaaaaa',
+                                  margin: 0,
+                                  padding: 0
+                                }}
+                              >
+                                <Users 
+                                  className="h-3 w-3" 
+                                  style={{ 
+                                    width: '12px', 
+                                    height: '12px',
+                                    color: '#aaaaaa',
+                                    display: 'block'
+                                  }}
+                                />
+                                <span style={{ color: '#aaaaaa' }}>{empresa.total_membros || 0} membros</span>
                               </div>
                             </div>
                           </div>
@@ -641,8 +1089,34 @@ export default function EmpresasPage() {
         </Card>
 
         {/* Coluna Direita - Membros da Empresa Selecionada */}
-        <Card className="bg-card/50 border-border/50">
-          <CardContent className="p-0 h-full flex flex-col">
+        <Card 
+          className="bg-card/50 border-border/50"
+          style={{
+            display: 'flex !important',
+            flexDirection: 'column',
+            backgroundColor: '#1a1a1a',
+            border: '2px solid #333333',
+            borderRadius: '12px',
+            minHeight: '600px',
+            height: 'auto',
+            overflow: 'visible',
+            visibility: 'visible !important',
+            opacity: '1 !important',
+            position: 'relative',
+            zIndex: 1
+          }}
+        >
+          <CardContent 
+            className="p-0 h-full flex flex-col"
+            style={{
+              padding: 0,
+              minHeight: '600px',
+              height: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'visible'
+            }}
+          >
             <div className="p-4 border-b flex items-center justify-between">
               <div>
                 <h2 className="font-semibold text-lg">
@@ -695,16 +1169,11 @@ export default function EmpresasPage() {
                         >
                           <div className="flex items-center gap-2 mb-2">
                             <Users className="h-4 w-4 text-muted-foreground shrink-0" />
-                            <h3 className="font-semibold">{membro.nome}</h3>
+                            <h3 className="font-semibold">{membro.perfis?.nome_completo || "Nome não disponível"}</h3>
                           </div>
-                          <p className="text-sm text-muted-foreground mb-2">{membro.email}</p>
+                          <p className="text-sm text-muted-foreground mb-2">{membro.perfis?.email || "Email não disponível"}</p>
                           <div className="flex items-center gap-2 flex-wrap">
                             {getCargoBadge(membro.cargo)}
-                            {membro.eh_superadmin && (
-                              <Badge variant="outline" className="bg-red-500/20 text-red-400 border-red-500/30">
-                                Superadmin
-                              </Badge>
-                            )}
                             {!membro.ativo && (
                               <Badge variant="outline" className="bg-gray-500/20 text-gray-400">
                                 Inativo
@@ -995,101 +1464,219 @@ export default function EmpresasPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Membro Details Dialog */}
-      <Dialog open={showMembroDetailsDialog} onOpenChange={setShowMembroDetailsDialog}>
+      {/* Membro Details/Edit Dialog */}
+      <Dialog open={showMembroDetailsDialog} onOpenChange={(open) => {
+        setShowMembroDetailsDialog(open)
+        if (!open) setIsEditingMembro(false)
+      }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Detalhes do Membro</DialogTitle>
+            <DialogTitle>{isEditingMembro ? "Editar Membro" : "Detalhes do Membro"}</DialogTitle>
             <DialogDescription>
-              Informações completas do membro
+              {isEditingMembro ? "Edite as informações do membro e clique em Salvar" : "Informações completas do membro"}
             </DialogDescription>
           </DialogHeader>
           {selectedMembro && (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
+                {/* Nome */}
                 <div>
-                  <Label className="text-muted-foreground">Nome</Label>
-                  <p className="font-medium">{selectedMembro.nome}</p>
+                  <Label>{isEditingMembro ? "Nome *" : "Nome"}</Label>
+                  {isEditingMembro ? (
+                    <Input
+                      value={editedMembroData.nome_completo}
+                      onChange={(e) => setEditedMembroData({ ...editedMembroData, nome_completo: e.target.value })}
+                      placeholder="Nome completo"
+                    />
+                  ) : (
+                    <p className="font-medium mt-2">{selectedMembro.perfis?.nome_completo || "Não informado"}</p>
+                  )}
                 </div>
+
+                {/* Email */}
                 <div>
-                  <Label className="text-muted-foreground">Email</Label>
-                  <p className="font-medium">{selectedMembro.email}</p>
+                  <Label>{isEditingMembro ? "Email *" : "Email"}</Label>
+                  {isEditingMembro ? (
+                    <Input
+                      type="email"
+                      value={editedMembroData.email}
+                      onChange={(e) => setEditedMembroData({ ...editedMembroData, email: e.target.value })}
+                      placeholder="email@exemplo.com"
+                    />
+                  ) : (
+                    <p className="font-medium mt-2">{selectedMembro.perfis?.email || "Não informado"}</p>
+                  )}
                 </div>
+
+                {/* Telefone */}
                 <div>
-                  <Label className="text-muted-foreground">Cargo</Label>
-                  <div className="mt-1">
-                    {getCargoBadge(selectedMembro.cargo)}
-                  </div>
+                  <Label>Telefone</Label>
+                  {isEditingMembro ? (
+                    <Input
+                      value={editedMembroData.telefone}
+                      onChange={(e) => setEditedMembroData({ ...editedMembroData, telefone: e.target.value })}
+                      placeholder="(00) 00000-0000"
+                    />
+                  ) : (
+                    <p className="font-medium mt-2">{selectedMembro.perfis?.telefone || "Não informado"}</p>
+                  )}
                 </div>
+
+                {/* Cargo */}
                 <div>
-                  <Label className="text-muted-foreground">Status</Label>
-                  <div className="mt-1">
-                    {selectedMembro.ativo ? (
-                      <Badge variant="outline" className="bg-green-500/20 text-green-400 border-green-500/30">
-                        Ativo
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="bg-gray-500/20 text-gray-400">
-                        Inativo
-                      </Badge>
+                  <Label>Cargo</Label>
+                  {isEditingMembro ? (
+                    <Select
+                      value={editedMembroData.cargo}
+                      onValueChange={(value) => setEditedMembroData({ ...editedMembroData, cargo: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="dono">Dono</SelectItem>
+                        <SelectItem value="admin">Admin</SelectItem>
+                        <SelectItem value="membro">Membro</SelectItem>
+                        <SelectItem value="visualizador">Visualizador</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <div className="mt-2">
+                      {getCargoBadge(selectedMembro.cargo)}
+                    </div>
+                  )}
+                </div>
+
+                {/* Status Membro */}
+                <div>
+                  <Label>Status</Label>
+                  {isEditingMembro ? (
+                    <Select
+                      value={editedMembroData.ativo ? "true" : "false"}
+                      onValueChange={(value) => setEditedMembroData({ ...editedMembroData, ativo: value === "true" })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="true">Ativo</SelectItem>
+                        <SelectItem value="false">Inativo</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <div className="mt-2">
+                      {selectedMembro.ativo ? (
+                        <Badge variant="outline" className="bg-green-500/20 text-green-400 border-green-500/30">
+                          Ativo
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="bg-gray-500/20 text-gray-400">
+                          Inativo
+                        </Badge>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {!isEditingMembro && (
+                  <>
+                    <div>
+                      <Label className="text-muted-foreground">Status Perfil</Label>
+                      <div className="mt-2">
+                        {selectedMembro.perfis?.ativo ? (
+                          <Badge variant="outline" className="bg-green-500/20 text-green-400 border-green-500/30">
+                            Ativo
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="bg-gray-500/20 text-gray-400">
+                            Inativo
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="text-muted-foreground">ID Perfil</Label>
+                      <p className="font-mono text-sm break-all mt-2">{selectedMembro.id_perfil || "Não informado"}</p>
+                    </div>
+                    <div>
+                      <Label className="text-muted-foreground">ID Membro</Label>
+                      <p className="font-mono text-sm break-all mt-2">{selectedMembro.id}</p>
+                    </div>
+                    <div>
+                      <Label className="text-muted-foreground">ID Empresa</Label>
+                      <p className="font-mono text-sm break-all mt-2">{selectedMembro.id_empresa}</p>
+                    </div>
+                    <div>
+                      <Label className="text-muted-foreground">Criado em</Label>
+                      <p className="text-sm mt-2">{new Date(selectedMembro.criado_em).toLocaleString("pt-BR")}</p>
+                    </div>
+                    {selectedMembro.ultimo_acesso && (
+                      <div>
+                        <Label className="text-muted-foreground">Último Acesso</Label>
+                        <p className="text-sm mt-2">{new Date(selectedMembro.ultimo_acesso).toLocaleString("pt-BR")}</p>
+                      </div>
                     )}
-                  </div>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground">Superadmin</Label>
-                  <div className="mt-1">
-                    {selectedMembro.eh_superadmin ? (
-                      <Badge variant="outline" className="bg-red-500/20 text-red-400 border-red-500/30">
-                        Sim
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="bg-gray-500/20 text-gray-400">
-                        Não
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground">ID Usuário</Label>
-                  <p className="font-mono text-sm break-all">{selectedMembro.id_usuario || "Não informado"}</p>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground">ID Membro</Label>
-                  <p className="font-mono text-sm break-all">{selectedMembro.id}</p>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground">ID Empresa</Label>
-                  <p className="font-mono text-sm break-all">{selectedMembro.id_empresa}</p>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground">Criado em</Label>
-                  <p className="text-sm">{new Date(selectedMembro.criado_em).toLocaleString("pt-BR")}</p>
-                </div>
-                {selectedMembro.ultimo_acesso && (
-                  <div>
-                    <Label className="text-muted-foreground">Último Acesso</Label>
-                    <p className="text-sm">{new Date(selectedMembro.ultimo_acesso).toLocaleString("pt-BR")}</p>
-                  </div>
+                  </>
                 )}
               </div>
-              <div className="flex justify-end gap-2 pt-4 border-t">
-                <Button 
-                  variant="outline" 
-                  onClick={() => setShowMembroDetailsDialog(false)}
-                >
-                  Fechar
-                </Button>
-                <Button 
-                  variant="destructive"
-                  onClick={() => {
-                    setShowMembroDetailsDialog(false)
-                    handleDeleteMembro(selectedMembro.id)
-                  }}
-                  className="gap-2"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Remover Membro
-                </Button>
+
+              <div className="flex justify-between gap-2 pt-4 border-t">
+                {isEditingMembro ? (
+                  <>
+                    <Button 
+                      variant="outline" 
+                      onClick={() => {
+                        setIsEditingMembro(false)
+                        // Restaurar dados originais
+                        setEditedMembroData({
+                          nome_completo: selectedMembro.perfis?.nome_completo || "",
+                          email: selectedMembro.perfis?.email || "",
+                          telefone: selectedMembro.perfis?.telefone || "",
+                          cargo: selectedMembro.cargo || "membro",
+                          ativo: selectedMembro.ativo ?? true
+                        })
+                      }}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button 
+                      onClick={handleSaveMembro}
+                      className="gap-2"
+                    >
+                      <CheckCircle className="h-4 w-4" />
+                      Salvar Alterações
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button 
+                      variant="destructive"
+                      onClick={() => {
+                        setShowMembroDetailsDialog(false)
+                        handleDeleteMembro(selectedMembro.id)
+                      }}
+                      className="gap-2"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Remover
+                    </Button>
+                    <div className="flex gap-2">
+                      <Button 
+                        variant="outline" 
+                        onClick={() => setShowMembroDetailsDialog(false)}
+                      >
+                        Fechar
+                      </Button>
+                      <Button 
+                        onClick={() => setIsEditingMembro(true)}
+                        className="gap-2"
+                      >
+                        <Edit className="h-4 w-4" />
+                        Editar
+                      </Button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           )}

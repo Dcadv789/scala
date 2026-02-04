@@ -580,15 +580,19 @@ export const getCurrentUser = (): User | null => {
       if (userData && userData.email) {
         return {
           id: userData.id || userData.email,
-          name: userData.name || userData.email.split("@")[0],
+          name: userData.nome || userData.name || userData.email.split("@")[0],
           email: userData.email,
+          phone: userData.telefone || userData.phone || "",
+          company: userData.empresaNome || userData.company || "",
           plan: userData.plan || "starter",
-          role: userData.role || "user",
+          role: userData.cargo || userData.role || "user",
           createdAt: userData.createdAt || new Date().toISOString(),
-          subscriptionStatus: userData.planStatus === "active" ? "active" : "expired",
+          subscriptionStatus: userData.planStatus === "active" || userData.planStatus === "ativo" ? "active" : "expired",
         }
       }
-    } catch { /* ignore */ }
+    } catch (err) {
+      console.error('[STORE] Erro ao carregar user:', err)
+    }
   }
   
   // Fallback to old system
@@ -1160,3 +1164,4 @@ export const removeVoiceFunnel = (funnelId: string) => {
   data.voiceFunnels = data.voiceFunnels.filter((f: VoiceFunnel) => f.id !== funnelId)
   saveData(data)
 }
+

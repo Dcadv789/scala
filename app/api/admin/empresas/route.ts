@@ -9,6 +9,8 @@ const supabase = createClient(
 // GET - Listar todas as empresas com seus membros
 export async function GET(request: NextRequest) {
   try {
+    console.log("[API Admin Empresas] 🔄 Iniciando busca de empresas...")
+    
     // Buscar todas as empresas
     const { data: empresas, error: empresasError } = await supabase
       .from("empresas")
@@ -16,11 +18,19 @@ export async function GET(request: NextRequest) {
       .order("criado_em", { ascending: false })
 
     if (empresasError) {
-      console.error("Error fetching empresas:", empresasError)
+      console.error("[API Admin Empresas] ❌ Erro ao buscar empresas:", empresasError)
       return NextResponse.json({ error: empresasError.message }, { status: 500 })
     }
 
+    console.log("[API Admin Empresas] ✅ Empresas encontradas:", empresas?.length || 0)
+    if (empresas && empresas.length > 0) {
+      empresas.forEach((emp, index) => {
+        console.log(`[API Admin Empresas]   ${index + 1}. ${emp.nome} (${emp.id}) - Status: ${emp.status_assinatura}, Plano: ${emp.plano_atual}`)
+      })
+    }
+
     // Para cada empresa, buscar seus membros
+    console.log("[API Admin Empresas] 🔄 Buscando membros para cada empresa...")
     const empresasComMembros = await Promise.all(
       (empresas || []).map(async (empresa) => {
         const { data: membros, error: membrosError } = await supabase
@@ -30,7 +40,9 @@ export async function GET(request: NextRequest) {
           .order("criado_em", { ascending: false })
 
         if (membrosError) {
-          console.error(`Error fetching membros for empresa ${empresa.id}:`, membrosError)
+          console.error(`[API Admin Empresas] ❌ Erro ao buscar membros para empresa ${empresa.id}:`, membrosError)
+        } else {
+          console.log(`[API Admin Empresas] ✅ Empresa ${empresa.nome}: ${membros?.length || 0} membros encontrados`)
         }
 
         return {
@@ -42,13 +54,22 @@ export async function GET(request: NextRequest) {
       })
     )
 
+    console.log("[API Admin Empresas] ✅ Processamento concluído:", {
+      total: empresasComMembros.length,
+      empresasComMembros: empresasComMembros.map(e => ({
+        id: e.id,
+        nome: e.nome,
+        total_membros: e.total_membros
+      }))
+    })
+
     return NextResponse.json({
       success: true,
       empresas: empresasComMembros,
       total: empresasComMembros.length
     })
   } catch (error: any) {
-    console.error("Error in GET /api/admin/empresas:", error)
+    console.error("[API Admin Empresas] ❌ Erro inesperado:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }

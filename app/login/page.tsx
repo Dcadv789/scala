@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { AlertCircle } from "lucide-react"
+import { AlertCircle, Eye, EyeOff } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { CardFooter } from "@/components/ui/card"
@@ -16,7 +16,6 @@ import { CardHeader } from "@/components/ui/card"
 import { Card } from "@/components/ui/card"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import Image from "next/image"
 import type React from "react"
 import { createClient } from "@supabase/supabase-js"
 import { EmpresaSelector } from "@/components/auth/empresa-selector"
@@ -30,6 +29,7 @@ export default function LoginPage() {
   const router = useRouter()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
   const [showEmpresaSelector, setShowEmpresaSelector] = useState(false)
@@ -261,14 +261,21 @@ export default function LoginPage() {
 
       setDadosUsuario(dadosUsuarioTemp)
 
-      // 6. Salvar token e sessão
+      // 6. Salvar token e sessão (localStorage + cookies)
       if (authData.session?.access_token) {
-        localStorage.setItem("scalazap_auth_token", authData.session.access_token)
-        console.log("[LOGIN] ✅ Token do Supabase Auth salvo")
+        const token = authData.session.access_token
+        
+        // Salvar no localStorage (para compatibilidade)
+        localStorage.setItem("scalazap_auth_token", token)
+        
+        // Salvar no cookie (para middleware)
+        document.cookie = `scalazap_auth_token=${token}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`
+        
+        console.log("[LOGIN] ✅ Token salvo (localStorage + cookie)")
       }
       
       if (authData.session) {
-        localStorage.setItem("scalazap_auth_session", JSON.stringify({
+        const sessionData = JSON.stringify({
           access_token: authData.session.access_token,
           refresh_token: authData.session.refresh_token,
           expires_at: authData.session.expires_at,
@@ -278,7 +285,9 @@ export default function LoginPage() {
             id: authData.user.id,
             email: authData.user.email
           }
-        }))
+        })
+        
+        localStorage.setItem("scalazap_auth_session", sessionData)
         console.log("[LOGIN] ✅ Sessão completa salva para Realtime")
       }
 
@@ -350,60 +359,221 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[#111c21] via-[#0d1a1f] to-[#00bf63] p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="space-y-4 text-center">
-          <div className="mx-auto">
-            <Image src="/zap-logo.png" alt="ScalaZap" width={180} height={80} className="h-12 w-auto" priority />
+    <div 
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'linear-gradient(to bottom right, #111c21, #0d1a1f, #00bf63)',
+        padding: '20px'
+      }}
+    >
+      {/* Card Container */}
+      <div 
+        style={{
+          width: '100%',
+          maxWidth: '450px',
+          backgroundColor: 'white',
+          borderRadius: '12px',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+          padding: '40px 30px'
+        }}
+      >
+        {/* Header */}
+        <div style={{ textAlign: 'center', marginBottom: '40px' }}>
+          <h1 style={{ 
+            fontSize: '40px', 
+            fontWeight: 'bold', 
+            color: '#00bf63',
+            marginBottom: '20px'
+          }}>
+            ScalaZap
+          </h1>
+          <h2 style={{ 
+            fontSize: '24px', 
+            fontWeight: 'bold', 
+            color: '#111827',
+            marginBottom: '8px'
+          }}>
+            Bem-vindo de volta
+          </h2>
+          <p style={{ fontSize: '14px', color: '#6B7280' }}>
+            Entre com sua conta para continuar
+          </p>
+        </div>
+
+        {/* Error Message */}
+        {error && (
+          <div 
+            style={{
+              backgroundColor: '#FEE2E2',
+              border: '1px solid #EF4444',
+              borderRadius: '8px',
+              padding: '12px',
+              marginBottom: '20px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+          >
+            <AlertCircle style={{ width: '16px', height: '16px', color: '#DC2626' }} />
+            <span style={{ fontSize: '14px', color: '#DC2626' }}>{error}</span>
           </div>
-          <CardTitle className="text-2xl font-bold">Bem-vindo de volta</CardTitle>
-          <CardDescription>Entre com sua conta para continuar</CardDescription>
-        </CardHeader>
-        <form onSubmit={handleSubmit}>
-          <CardContent className="space-y-4">
-            {error && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="seu@email.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Senha</Label>
-              <Input
+        )}
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          
+          {/* Email Field */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <label 
+              htmlFor="email" 
+              style={{ 
+                fontSize: '14px', 
+                fontWeight: '500', 
+                color: '#374151'
+              }}
+            >
+              Email
+            </label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              placeholder="seu@email.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoComplete="email"
+              style={{
+                width: '100%',
+                height: '44px',
+                padding: '0 12px',
+                fontSize: '14px',
+                color: '#111827',
+                backgroundColor: 'white',
+                border: '1px solid #D1D5DB',
+                borderRadius: '6px',
+                outline: 'none',
+                transition: 'all 0.2s'
+              }}
+              onFocus={(e) => e.target.style.borderColor = '#00bf63'}
+              onBlur={(e) => e.target.style.borderColor = '#D1D5DB'}
+            />
+          </div>
+
+          {/* Password Field */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <label 
+              htmlFor="password" 
+              style={{ 
+                fontSize: '14px', 
+                fontWeight: '500', 
+                color: '#374151'
+              }}
+            >
+              Senha
+            </label>
+            <div style={{ position: 'relative', width: '100%' }}>
+              <input
                 id="password"
-                type="password"
+                name="password"
+                type={showPassword ? "text" : "password"}
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 minLength={6}
+                autoComplete="current-password"
+                style={{
+                  width: '100%',
+                  height: '44px',
+                  padding: '0 12px',
+                  paddingRight: '44px',
+                  fontSize: '14px',
+                  color: '#111827',
+                  backgroundColor: 'white',
+                  border: '1px solid #D1D5DB',
+                  borderRadius: '6px',
+                  outline: 'none',
+                  transition: 'all 0.2s'
+                }}
+                onFocus={(e) => e.target.style.borderColor = '#00bf63'}
+                onBlur={(e) => e.target.style.borderColor = '#D1D5DB'}
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  position: 'absolute',
+                  right: '12px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#6B7280',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '4px'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.color = '#00bf63'}
+                onMouseLeave={(e) => e.currentTarget.style.color = '#6B7280'}
+              >
+                {showPassword ? (
+                  <EyeOff style={{ width: '20px', height: '20px' }} />
+                ) : (
+                  <Eye style={{ width: '20px', height: '20px' }} />
+                )}
+              </button>
             </div>
-          </CardContent>
-          <CardFooter className="flex flex-col gap-4">
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Entrando..." : "Entrar"}
-            </Button>
-            <p className="text-center text-sm text-muted-foreground">
-              Nao tem uma conta?{" "}
-              <Link href="/register" className="font-medium text-primary hover:underline">
-                Criar conta
-              </Link>
-            </p>
-          </CardFooter>
+          </div>
+
+          {/* Submit Button */}
+          <button
+            type="submit"
+            disabled={loading}
+            style={{
+              width: '100%',
+              height: '44px',
+              backgroundColor: loading ? '#9CA3AF' : '#00bf63',
+              color: 'white',
+              fontSize: '16px',
+              fontWeight: '600',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              transition: 'all 0.2s',
+              marginTop: '8px'
+            }}
+            onMouseEnter={(e) => {
+              if (!loading) e.currentTarget.style.backgroundColor = '#00a855'
+            }}
+            onMouseLeave={(e) => {
+              if (!loading) e.currentTarget.style.backgroundColor = '#00bf63'
+            }}
+          >
+            {loading ? 'Entrando...' : 'Entrar'}
+          </button>
+
+          {/* Sign Up Link */}
+          <p style={{ textAlign: 'center', fontSize: '14px', color: '#6B7280', marginTop: '8px' }}>
+            Não tem uma conta?{' '}
+            <Link 
+              href="/register" 
+              style={{ 
+                fontWeight: '600', 
+                color: '#00bf63', 
+                textDecoration: 'none'
+              }}
+            >
+              Criar conta
+            </Link>
+          </p>
         </form>
-      </Card>
+      </div>
     </div>
   )
 }

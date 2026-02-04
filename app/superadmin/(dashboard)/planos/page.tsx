@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, memo, useCallback, useRef } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -78,6 +78,704 @@ function toDatetimeLocal(value: string | null | undefined) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+const FieldRow = memo(({
+  label,
+  description,
+  children,
+}: {
+  label: string
+  description?: string
+  children: React.ReactNode
+}) => (
+  <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-start">
+    <div className="md:col-span-5 min-w-0">
+      <div className="flex items-baseline gap-2 min-w-0">
+        <Label className="text-sm whitespace-nowrap">{label}</Label>
+        {description ? (
+          <span className="text-xs text-muted-foreground truncate">
+            {description}
+          </span>
+        ) : null}
+      </div>
+    </div>
+    <div className="md:col-span-7 min-w-0">{children}</div>
+  </div>
+), (prevProps, nextProps) => {
+  return prevProps.label === nextProps.label && prevProps.description === nextProps.description
+})
+
+FieldRow.displayName = "FieldRow"
+
+// Componente separado para o formulário do modal - SEM MEMO para evitar problemas de re-render
+function PlanoForm({
+  initialData,
+  isEdit,
+  originalId,
+  saving,
+  onSave,
+  onCancel,
+}: {
+  initialData: any
+  isEdit: boolean
+  originalId: string | null
+  saving: boolean
+  onSave: (data: any) => void
+  onCancel: () => void
+}) {
+  // Estado local - inicializar apenas UMA VEZ quando o componente montar
+  // Usar função inicializadora para garantir que só roda uma vez
+  const [localData, setLocalData] = useState(() => {
+    // Criar cópia profunda para evitar referências compartilhadas
+    const copy = JSON.parse(JSON.stringify(initialData))
+    console.log("[PlanoForm] Estado inicializado - nome:", copy?.nome)
+    return copy
+  })
+  
+  // Refs para os inputs para atualização direta do DOM
+  const nomeInputRef = useRef<HTMLInputElement>(null)
+
+  // NÃO sincronizar mais - o estado local é independente após inicialização
+  // Isso evita que o estado seja resetado durante a digitação
+  
+  // Log quando localData.nome mudar para debug
+  useEffect(() => {
+    console.log("[PlanoForm] localData.nome mudou para:", localData?.nome)
+  }, [localData?.nome])
+
+  const handleSave = () => {
+    onSave(localData)
+  }
+
+  return (
+    <>
+      <div style={{ marginBottom: '24px' }}>
+        <h2 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '8px', color: 'hsl(var(--foreground))' }}>
+          {isEdit ? "Editar Plano" : "Criar Plano"}
+        </h2>
+        <p style={{ fontSize: '14px', color: 'hsl(var(--muted-foreground))' }}>
+          Você pode editar todos os campos do banco (incluindo JSON e timestamps)
+        </p>
+      </div>
+
+      <div className="space-y-6 py-2">
+        {isEdit ? (
+          <FieldRow label="ID" description="ID do plano (não pode ser alterado)">
+            <input
+              type="text"
+              value={originalId || ""}
+              disabled
+              style={{
+                width: '100%',
+                height: '36px',
+                padding: '0 12px',
+                fontSize: '14px',
+                color: 'hsl(var(--muted-foreground))',
+                backgroundColor: 'hsl(var(--muted))',
+                border: '1px solid hsl(var(--input))',
+                borderRadius: '6px',
+                outline: 'none',
+                cursor: 'not-allowed'
+              }}
+            />
+          </FieldRow>
+        ) : (
+          <FieldRow label="ID (opcional)" description="Se vazio, o banco gera automaticamente (UUID)">
+            <input
+              type="text"
+              defaultValue={localData.id ?? ""}
+              onChange={(e) => {
+                const value = e.target.value
+                setLocalData((prev: any) => ({ ...prev, id: value }))
+              }}
+              placeholder="UUID (opcional)"
+              autoFocus
+              tabIndex={0}
+              style={{
+                width: '100%',
+                height: '36px',
+                padding: '0 12px',
+                fontSize: '14px',
+                color: 'hsl(var(--foreground))',
+                backgroundColor: 'hsl(var(--input))',
+                border: '1px solid hsl(var(--border))',
+                borderRadius: '6px',
+                outline: 'none'
+              }}
+            />
+          </FieldRow>
+        )}
+
+        <FieldRow label="Nome *">
+          <input
+            ref={nomeInputRef}
+            type="text"
+            defaultValue={localData?.nome ?? ""}
+            onChange={(e) => {
+              const newValue = e.target.value
+              console.log("[PlanoForm] onChange nome - digitado:", newValue, "| estado atual:", localData?.nome)
+              
+              // Atualizar estado diretamente
+              setLocalData((prev: any) => {
+                const updated = { ...prev, nome: newValue }
+                console.log("[PlanoForm] Estado atualizado - novo nome:", updated.nome)
+                return updated
+              })
+            }}
+            onFocus={(e) => {
+              console.log("[PlanoForm] Input focou, valor no DOM:", e.target.value, "| valor no estado:", localData?.nome)
+            }}
+            autoFocus
+            tabIndex={0}
+            style={{
+              width: '100%',
+              height: '36px',
+              padding: '0 12px',
+              fontSize: '14px',
+              color: 'hsl(var(--foreground))',
+              backgroundColor: 'hsl(var(--input))',
+              border: '1px solid hsl(var(--border))',
+              borderRadius: '6px',
+              outline: 'none'
+            }}
+          />
+        </FieldRow>
+
+        <FieldRow label="Slug *">
+          <input
+            type="text"
+            defaultValue={localData.slug ?? ""} 
+            onChange={(e) => {
+              const value = e.target.value
+              setLocalData((prev: any) => ({ ...prev, slug: value }))
+            }}
+            tabIndex={0}
+            style={{
+              width: '100%',
+              height: '36px',
+              padding: '0 12px',
+              fontSize: '14px',
+              color: 'hsl(var(--foreground))',
+              backgroundColor: 'hsl(var(--input))',
+              border: '1px solid hsl(var(--border))',
+              borderRadius: '6px',
+              outline: 'none'
+            }}
+          />
+        </FieldRow>
+
+        <FieldRow label="Descrição">
+          <textarea
+            defaultValue={localData.descricao ?? ""}
+            onChange={(e) => {
+              const value = e.target.value
+              setLocalData((prev: any) => ({ ...prev, descricao: value }))
+            }}
+            rows={3}
+            tabIndex={0}
+            style={{
+              width: '100%',
+              padding: '12px',
+              fontSize: '14px',
+              color: 'hsl(var(--foreground))',
+              backgroundColor: 'hsl(var(--input))',
+              border: '1px solid hsl(var(--border))',
+              borderRadius: '6px',
+              outline: 'none',
+              resize: 'vertical',
+              fontFamily: 'inherit'
+            }}
+          />
+        </FieldRow>
+
+        <div className="rounded-md border border-red-500/20 bg-red-500/5 p-3 text-sm">
+          <div className="font-medium text-foreground">Instruções</div>
+          <ul className="mt-2 list-disc pl-5 text-muted-foreground space-y-1">
+            <li>
+              Para campos de <strong>limite</strong> (conexões, contatos, campanhas, mensagens, funcionários),
+              use <strong>-1</strong> para <strong>ilimitado</strong>.
+            </li>
+            <li>
+              Deixe vazio para usar o <strong>valor padrão</strong> configurado no banco (quando aplicável).
+            </li>
+          </ul>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-4">
+            <FieldRow label="Valor padrão (mensal)" description="numeric">
+              <input
+                type="number"
+                step="0.01"
+                defaultValue={localData.valor_padrao ?? ""}
+                onChange={(e) => {
+                  const value = e.target.value
+                  setLocalData((prev: any) => ({ ...prev, valor_padrao: value }))
+                }}
+                tabIndex={0}
+                style={{
+                  width: '100%',
+                  height: '36px',
+                  padding: '0 12px',
+                  fontSize: '14px',
+                  color: 'hsl(var(--foreground))',
+                  backgroundColor: 'hsl(var(--input))',
+                  border: '1px solid hsl(var(--border))',
+                  borderRadius: '6px',
+                  outline: 'none'
+                }}
+              />
+            </FieldRow>
+            <FieldRow label="Preço anual" description="numeric">
+              <input
+                type="number"
+                step="0.01"
+                defaultValue={localData.preco_anual ?? ""}
+                onChange={(e) => {
+                  const value = e.target.value
+                  setLocalData((prev: any) => ({ ...prev, preco_anual: value }))
+                }}
+                tabIndex={0}
+                style={{
+                  width: '100%',
+                  height: '36px',
+                  padding: '0 12px',
+                  fontSize: '14px',
+                  color: 'hsl(var(--foreground))',
+                  backgroundColor: 'hsl(var(--input))',
+                  border: '1px solid hsl(var(--border))',
+                  borderRadius: '6px',
+                  outline: 'none'
+                }}
+              />
+            </FieldRow>
+            <FieldRow label="Preço anual com desconto" description="numeric">
+              <input
+                type="number"
+                step="0.01"
+                defaultValue={localData.preco_anual_com_desconto ?? ""}
+                onChange={(e) => {
+                  const value = e.target.value
+                  setLocalData((prev: any) => ({ ...prev, preco_anual_com_desconto: value }))
+                }}
+                tabIndex={0}
+                style={{
+                  width: '100%',
+                  height: '36px',
+                  padding: '0 12px',
+                  fontSize: '14px',
+                  color: 'hsl(var(--foreground))',
+                  backgroundColor: 'hsl(var(--input))',
+                  border: '1px solid hsl(var(--border))',
+                  borderRadius: '6px',
+                  outline: 'none'
+                }}
+              />
+            </FieldRow>
+            <FieldRow label="Valor 1ª mensalidade" description="numeric">
+              <input
+                type="number"
+                step="0.01"
+                defaultValue={localData.valor_primeira_mensalidade ?? ""}
+                onChange={(e) => {
+                  const value = e.target.value
+                  setLocalData((prev: any) => ({ ...prev, valor_primeira_mensalidade: value }))
+                }}
+                tabIndex={0}
+                style={{
+                  width: '100%',
+                  height: '36px',
+                  padding: '0 12px',
+                  fontSize: '14px',
+                  color: 'hsl(var(--foreground))',
+                  backgroundColor: 'hsl(var(--input))',
+                  border: '1px solid hsl(var(--border))',
+                  borderRadius: '6px',
+                  outline: 'none'
+                }}
+              />
+            </FieldRow>
+          </div>
+
+          <div className="space-y-4">
+            <FieldRow label="Limite conexões" description="integer">
+              <input
+                type="number"
+                defaultValue={localData.limite_conexoes ?? ""}
+                onChange={(e) => {
+                  const value = e.target.value
+                  setLocalData((prev: any) => ({ ...prev, limite_conexoes: value }))
+                }}
+                tabIndex={0}
+                style={{
+                  width: '100%',
+                  height: '36px',
+                  padding: '0 12px',
+                  fontSize: '14px',
+                  color: 'hsl(var(--foreground))',
+                  backgroundColor: 'hsl(var(--input))',
+                  border: '1px solid hsl(var(--border))',
+                  borderRadius: '6px',
+                  outline: 'none'
+                }}
+              />
+            </FieldRow>
+            <FieldRow label="Máx contatos" description="integer">
+              <input
+                type="number"
+                defaultValue={localData.max_contatos ?? ""}
+                onChange={(e) => {
+                  const value = e.target.value
+                  setLocalData((prev: any) => ({ ...prev, max_contatos: value }))
+                }}
+                tabIndex={0}
+                style={{
+                  width: '100%',
+                  height: '36px',
+                  padding: '0 12px',
+                  fontSize: '14px',
+                  color: 'hsl(var(--foreground))',
+                  backgroundColor: 'hsl(var(--input))',
+                  border: '1px solid hsl(var(--border))',
+                  borderRadius: '6px',
+                  outline: 'none'
+                }}
+              />
+            </FieldRow>
+            <FieldRow label="Limite campanhas" description="integer">
+              <input
+                type="number"
+                defaultValue={localData.limite_campanhas ?? ""}
+                onChange={(e) => {
+                  const value = e.target.value
+                  setLocalData((prev: any) => ({ ...prev, limite_campanhas: value }))
+                }}
+                tabIndex={0}
+                style={{
+                  width: '100%',
+                  height: '36px',
+                  padding: '0 12px',
+                  fontSize: '14px',
+                  color: 'hsl(var(--foreground))',
+                  backgroundColor: 'hsl(var(--input))',
+                  border: '1px solid hsl(var(--border))',
+                  borderRadius: '6px',
+                  outline: 'none'
+                }}
+              />
+            </FieldRow>
+            <FieldRow label="Limite mensagens" description="integer">
+              <input
+                type="number"
+                defaultValue={localData.limite_mensagens ?? ""}
+                onChange={(e) => {
+                  const value = e.target.value
+                  setLocalData((prev: any) => ({ ...prev, limite_mensagens: value }))
+                }}
+                tabIndex={0}
+                style={{
+                  width: '100%',
+                  height: '36px',
+                  padding: '0 12px',
+                  fontSize: '14px',
+                  color: 'hsl(var(--foreground))',
+                  backgroundColor: 'hsl(var(--input))',
+                  border: '1px solid hsl(var(--border))',
+                  borderRadius: '6px',
+                  outline: 'none'
+                }}
+              />
+            </FieldRow>
+            <FieldRow label="Limite funcionários" description="integer">
+              <input
+                type="number"
+                defaultValue={localData.limite_funcionarios ?? ""}
+                onChange={(e) => {
+                  const value = e.target.value
+                  setLocalData((prev: any) => ({ ...prev, limite_funcionarios: value }))
+                }}
+                tabIndex={0}
+                style={{
+                  width: '100%',
+                  height: '36px',
+                  padding: '0 12px',
+                  fontSize: '14px',
+                  color: 'hsl(var(--foreground))',
+                  backgroundColor: 'hsl(var(--input))',
+                  border: '1px solid hsl(var(--border))',
+                  borderRadius: '6px',
+                  outline: 'none'
+                }}
+              />
+            </FieldRow>
+          </div>
+        </div>
+
+        <FieldRow label="Funcionalidades (jsonb)" description='Ex.: ["chat", "templates"] ou {"x": true}'>
+          <textarea
+            defaultValue={
+              typeof localData.funcionalidades === "string"
+                ? localData.funcionalidades
+                : JSON.stringify(localData.funcionalidades ?? [], null, 2)
+            }
+            onChange={(e) => {
+              const value = e.target.value
+              setLocalData((prev: any) => ({ ...prev, funcionalidades: value }))
+            }}
+            rows={6}
+            tabIndex={0}
+            style={{
+              width: '100%',
+              padding: '12px',
+              fontSize: '14px',
+              color: 'hsl(var(--foreground))',
+              backgroundColor: 'hsl(var(--input))',
+              border: '1px solid hsl(var(--border))',
+              borderRadius: '6px',
+              outline: 'none',
+              resize: 'vertical',
+              fontFamily: 'monospace'
+            }}
+          />
+        </FieldRow>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FieldRow label="ID Checkout">
+            <input
+              type="text"
+              defaultValue={localData.id_checkout ?? ""}
+              onChange={(e) => {
+                const value = e.target.value
+                setLocalData((prev: any) => ({ ...prev, id_checkout: value }))
+              }}
+              tabIndex={0}
+              style={{
+                width: '100%',
+                height: '36px',
+                padding: '0 12px',
+                fontSize: '14px',
+                color: 'hsl(var(--foreground))',
+                backgroundColor: 'hsl(var(--input))',
+                border: '1px solid hsl(var(--border))',
+                borderRadius: '6px',
+                outline: 'none'
+              }}
+            />
+          </FieldRow>
+          <FieldRow label="Suporte" description="text (ex.: email, whatsapp, prioridade)">
+            <input
+              type="text"
+              defaultValue={localData.suporte ?? ""} 
+              onChange={(e) => {
+                const value = e.target.value
+                setLocalData((prev: any) => ({ ...prev, suporte: value }))
+              }}
+              tabIndex={0}
+              style={{
+                width: '100%',
+                height: '36px',
+                padding: '0 12px',
+                fontSize: '14px',
+                color: 'hsl(var(--foreground))',
+                backgroundColor: 'hsl(var(--input))',
+                border: '1px solid hsl(var(--border))',
+                borderRadius: '6px',
+                outline: 'none'
+              }}
+            />
+          </FieldRow>
+          <FieldRow label="Chat ao vivo" description="text (ex.: simplificado, completo)">
+            <input
+              type="text"
+              defaultValue={localData.chat_ao_vivo ?? ""}
+              onChange={(e) => {
+                const value = e.target.value
+                setLocalData((prev: any) => ({ ...prev, chat_ao_vivo: value }))
+              }}
+              tabIndex={0}
+              style={{
+                width: '100%',
+                height: '36px',
+                padding: '0 12px',
+                fontSize: '14px',
+                color: 'hsl(var(--foreground))',
+                backgroundColor: 'hsl(var(--input))',
+                border: '1px solid hsl(var(--border))',
+                borderRadius: '6px',
+                outline: 'none'
+              }}
+            />
+          </FieldRow>
+          <FieldRow label="Templates" description="text (ex.: basicos, completos)">
+            <input
+              type="text"
+              defaultValue={localData.templates ?? ""}
+              onChange={(e) => {
+                const value = e.target.value
+                setLocalData((prev: any) => ({ ...prev, templates: value }))
+              }}
+              tabIndex={0}
+              style={{
+                width: '100%',
+                height: '36px',
+                padding: '0 12px',
+                fontSize: '14px',
+                color: 'hsl(var(--foreground))',
+                backgroundColor: 'hsl(var(--input))',
+                border: '1px solid hsl(var(--border))',
+                borderRadius: '6px',
+                outline: 'none'
+              }}
+            />
+          </FieldRow>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FieldRow label="Criado em" description="timestamp">
+            <input
+              type="datetime-local"
+              defaultValue={toDatetimeLocal(localData.criado_em ?? null)}
+              onChange={(e) => {
+                const value = e.target.value
+                setLocalData((prev: any) => ({ ...prev, criado_em: value }))
+              }}
+              tabIndex={0}
+              style={{
+                width: '100%',
+                height: '36px',
+                padding: '0 12px',
+                fontSize: '14px',
+                color: 'hsl(var(--foreground))',
+                backgroundColor: 'hsl(var(--input))',
+                border: '1px solid hsl(var(--border))',
+                borderRadius: '6px',
+                outline: 'none'
+              }}
+            />
+          </FieldRow>
+          <FieldRow label="Atualizado em" description="timestamp">
+            <input
+              type="datetime-local"
+              defaultValue={toDatetimeLocal(localData.atualizado_em ?? null)}
+              onChange={(e) => {
+                const value = e.target.value
+                setLocalData((prev: any) => ({ ...prev, atualizado_em: value }))
+              }}
+              tabIndex={0}
+              style={{
+                width: '100%',
+                height: '36px',
+                padding: '0 12px',
+                fontSize: '14px',
+                color: 'hsl(var(--foreground))',
+                backgroundColor: 'hsl(var(--input))',
+                border: '1px solid hsl(var(--border))',
+                borderRadius: '6px',
+                outline: 'none'
+              }}
+            />
+          </FieldRow>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FieldRow label="Ativo" description="boolean">
+            <div className="flex items-center gap-3">
+              <Switch 
+                checked={!!localData.ativo} 
+                onCheckedChange={(v) => {
+                  setLocalData((prev: any) => ({ ...prev, ativo: v }))
+                }}
+              />
+              <span className="text-sm text-muted-foreground">{localData.ativo ? "Sim" : "Não"}</span>
+            </div>
+          </FieldRow>
+
+          <FieldRow label="API oficial" description="boolean">
+            <div className="flex items-center gap-3">
+              <Switch 
+                checked={!!localData.api_oficial} 
+                onCheckedChange={(v) => {
+                  setLocalData((prev: any) => ({ ...prev, api_oficial: v }))
+                }}
+              />
+              <span className="text-sm text-muted-foreground">{localData.api_oficial ? "Sim" : "Não"}</span>
+            </div>
+          </FieldRow>
+
+          <FieldRow label="App mobile" description="boolean">
+            <div className="flex items-center gap-3">
+              <Switch 
+                checked={!!localData.app_mobile} 
+                onCheckedChange={(v) => {
+                  setLocalData((prev: any) => ({ ...prev, app_mobile: v }))
+                }}
+              />
+              <span className="text-sm text-muted-foreground">{localData.app_mobile ? "Sim" : "Não"}</span>
+            </div>
+          </FieldRow>
+
+          <FieldRow label="App desktop" description="boolean">
+            <div className="flex items-center gap-3">
+              <Switch 
+                checked={!!localData.app_desktop} 
+                onCheckedChange={(v) => {
+                  setLocalData((prev: any) => ({ ...prev, app_desktop: v }))
+                }}
+              />
+              <span className="text-sm text-muted-foreground">{localData.app_desktop ? "Sim" : "Não"}</span>
+            </div>
+          </FieldRow>
+
+          <FieldRow label="Gerente dedicado" description="boolean">
+            <div className="flex items-center gap-3">
+              <Switch
+                checked={!!localData.gerente_conta_dedicado}
+                onCheckedChange={(v) => {
+                  setLocalData((prev: any) => ({ ...prev, gerente_conta_dedicado: v }))
+                }}
+              />
+              <span className="text-sm text-muted-foreground">{localData.gerente_conta_dedicado ? "Sim" : "Não"}</span>
+            </div>
+          </FieldRow>
+
+          <FieldRow label="SLA garantido" description="boolean">
+            <div className="flex items-center gap-3">
+              <Switch 
+                checked={!!localData.sla_garantido} 
+                onCheckedChange={(v) => {
+                  setLocalData((prev: any) => ({ ...prev, sla_garantido: v }))
+                }}
+              />
+              <span className="text-sm text-muted-foreground">{localData.sla_garantido ? "Sim" : "Não"}</span>
+            </div>
+          </FieldRow>
+
+          <FieldRow label="Treinamento incluído" description="boolean">
+            <div className="flex items-center gap-3">
+              <Switch
+                checked={!!localData.treinamento_incluido}
+                onCheckedChange={(v) => {
+                  setLocalData((prev: any) => ({ ...prev, treinamento_incluido: v }))
+                }}
+              />
+              <span className="text-sm text-muted-foreground">{localData.treinamento_incluido ? "Sim" : "Não"}</span>
+            </div>
+          </FieldRow>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-end gap-2 pt-2">
+        <Button variant="outline" onClick={onCancel} disabled={saving}>
+          Cancelar
+        </Button>
+        <Button className="bg-red-500 hover:bg-red-600" onClick={handleSave} disabled={saving}>
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          <span className={saving ? "ml-2" : ""}>{saving ? "Salvando..." : "Salvar"}</span>
+        </Button>
+      </div>
+    </>
+  )
+}
+
 export default function PlanosPage() {
   const { toast } = useToast()
   const [planos, setPlanos] = useState<Plano[]>([])
@@ -118,19 +816,30 @@ export default function PlanosPage() {
   const openCreate = () => {
     setIsEdit(false)
     setOriginalId(null)
-    setCurrent(emptyPlano())
+    // Criar cópia profunda para garantir que não mude durante a edição
+    const emptyData = emptyPlano()
+    const dataCopy = JSON.parse(JSON.stringify(emptyData))
+    setCurrent(dataCopy)
     setShowDialog(true)
   }
 
-  const openEdit = (p: Plano) => {
+  const openEdit = useCallback((p: Plano) => {
     setIsEdit(true)
     setOriginalId(p.id)
-    setCurrent({
+    // Criar cópia profunda para garantir que não mude durante a edição
+    const dataCopy = JSON.parse(JSON.stringify({
       ...p,
       funcionalidades: p.funcionalidades ?? [],
-    })
+    }))
+    setCurrent(dataCopy)
     setShowDialog(true)
-  }
+  }, [])
+
+  const handleDialogChange = useCallback((open: boolean) => {
+    if (!open && !saving) {
+      setShowDialog(false)
+    }
+  }, [saving])
 
   const parseFuncionalidades = () => {
     const raw = current.funcionalidades
@@ -144,22 +853,32 @@ export default function PlanosPage() {
     }
   }
 
-  const handleSave = async () => {
-    if (!current.nome?.trim() || !current.slug?.trim()) {
+  const handleSave = useCallback(async (data: any) => {
+    if (!data.nome?.trim() || !data.slug?.trim()) {
       toast({ title: "Campos obrigatórios", description: "nome e slug são obrigatórios", variant: "destructive" })
       return
     }
 
-    const funcionalidadesParsed = parseFuncionalidades()
-    if (funcionalidadesParsed === undefined) {
-      toast({ title: "JSON inválido", description: "funcionalidades precisa ser um JSON válido", variant: "destructive" })
-      return
+    // Parse funcionalidades
+    const raw = data.funcionalidades
+    let funcionalidadesParsed: any = null
+    if (raw !== null && raw !== undefined) {
+      if (typeof raw === "object") {
+        funcionalidadesParsed = raw
+      } else if (String(raw).trim() !== "") {
+        try {
+          funcionalidadesParsed = JSON.parse(String(raw))
+        } catch {
+          toast({ title: "JSON inválido", description: "funcionalidades precisa ser um JSON válido", variant: "destructive" })
+          return
+        }
+      }
     }
 
     setSaving(true)
     try {
       const payload: any = {
-        ...current,
+        ...data,
         funcionalidades: funcionalidadesParsed,
       }
 
@@ -172,8 +891,8 @@ export default function PlanosPage() {
         body: JSON.stringify(payload),
       })
 
-      const data = await res.json()
-      if (!res.ok || !data.success) throw new Error(data.error || "Falha ao salvar plano")
+      const dataRes = await res.json()
+      if (!res.ok || !dataRes.success) throw new Error(dataRes.error || "Falha ao salvar plano")
 
       toast({ title: "Sucesso", description: isEdit ? "Plano atualizado" : "Plano criado" })
       setShowDialog(false)
@@ -184,7 +903,7 @@ export default function PlanosPage() {
     } finally {
       setSaving(false)
     }
-  }
+  }, [isEdit, originalId, toast, loadPlanos])
 
   const handleDelete = async (id: string) => {
     if (!confirm("Tem certeza que deseja deletar este plano?")) return
@@ -200,29 +919,6 @@ export default function PlanosPage() {
     }
   }
 
-  const FieldRow = ({
-    label,
-    description,
-    children,
-  }: {
-    label: string
-    description?: string
-    children: React.ReactNode
-  }) => (
-    <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-start">
-      <div className="md:col-span-5 min-w-0">
-        <div className="flex items-baseline gap-2 min-w-0">
-          <Label className="text-sm whitespace-nowrap">{label}</Label>
-          {description ? (
-            <span className="text-xs text-muted-foreground truncate">
-              {description}
-            </span>
-          ) : null}
-        </div>
-      </div>
-      <div className="md:col-span-7 min-w-0">{children}</div>
-    </div>
-  )
 
   return (
     <div className="p-6 space-y-6">
@@ -317,257 +1013,61 @@ export default function PlanosPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        {/* Importante: o DialogContent padrão tem `sm:max-w-lg` em `components/ui/dialog.tsx`.
-            Então precisamos sobrescrever com `sm:max-w-[...]` aqui para o modal realmente ficar largo. */}
-        <DialogContent className="w-[1100px] max-w-[96vw] sm:max-w-[1100px] max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{isEdit ? "Editar Plano" : "Criar Plano"}</DialogTitle>
-            <DialogDescription>Você pode editar todos os campos do banco (incluindo JSON e timestamps)</DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-6 py-2">
-            {isEdit ? (
-              <FieldRow label="ID" description="ID do plano (não pode ser alterado)">
-                <Input value={originalId || ""} disabled />
-              </FieldRow>
-            ) : (
-              <FieldRow label="ID (opcional)" description="Se vazio, o banco gera automaticamente (UUID)">
-                <Input
-                  value={current.id ?? ""}
-                  onChange={(e) => setCurrent({ ...current, id: e.target.value })}
-                  placeholder="UUID (opcional)"
-                />
-              </FieldRow>
-            )}
-
-            <FieldRow label="Nome *">
-              <Input value={current.nome ?? ""} onChange={(e) => setCurrent({ ...current, nome: e.target.value })} />
-            </FieldRow>
-
-            <FieldRow label="Slug *">
-              <Input value={current.slug ?? ""} onChange={(e) => setCurrent({ ...current, slug: e.target.value })} />
-            </FieldRow>
-
-            <FieldRow label="Descrição">
-              <Textarea
-                value={current.descricao ?? ""}
-                onChange={(e) => setCurrent({ ...current, descricao: e.target.value })}
-                rows={3}
-              />
-            </FieldRow>
-
-            <div className="rounded-md border border-red-500/20 bg-red-500/5 p-3 text-sm">
-              <div className="font-medium text-foreground">Instruções</div>
-              <ul className="mt-2 list-disc pl-5 text-muted-foreground space-y-1">
-                <li>
-                  Para campos de <strong>limite</strong> (conexões, contatos, campanhas, mensagens, funcionários),
-                  use <strong>-1</strong> para <strong>ilimitado</strong>.
-                </li>
-                <li>
-                  Deixe vazio para usar o <strong>valor padrão</strong> configurado no banco (quando aplicável).
-                </li>
-              </ul>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-4">
-                <FieldRow label="Valor padrão (mensal)" description="numeric">
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={current.valor_padrao ?? ""}
-                    onChange={(e) => setCurrent({ ...current, valor_padrao: e.target.value })}
-                  />
-                </FieldRow>
-                <FieldRow label="Preço anual" description="numeric">
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={current.preco_anual ?? ""}
-                    onChange={(e) => setCurrent({ ...current, preco_anual: e.target.value })}
-                  />
-                </FieldRow>
-                <FieldRow label="Preço anual com desconto" description="numeric">
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={current.preco_anual_com_desconto ?? ""}
-                    onChange={(e) => setCurrent({ ...current, preco_anual_com_desconto: e.target.value })}
-                  />
-                </FieldRow>
-                <FieldRow label="Valor 1ª mensalidade" description="numeric">
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={current.valor_primeira_mensalidade ?? ""}
-                    onChange={(e) => setCurrent({ ...current, valor_primeira_mensalidade: e.target.value })}
-                  />
-                </FieldRow>
-              </div>
-
-              <div className="space-y-4">
-                <FieldRow label="Limite conexões" description="integer">
-                  <Input
-                    type="number"
-                    value={current.limite_conexoes ?? ""}
-                    onChange={(e) => setCurrent({ ...current, limite_conexoes: e.target.value })}
-                  />
-                </FieldRow>
-                <FieldRow label="Máx contatos" description="integer">
-                  <Input
-                    type="number"
-                    value={current.max_contatos ?? ""}
-                    onChange={(e) => setCurrent({ ...current, max_contatos: e.target.value })}
-                  />
-                </FieldRow>
-                <FieldRow label="Limite campanhas" description="integer">
-                  <Input
-                    type="number"
-                    value={current.limite_campanhas ?? ""}
-                    onChange={(e) => setCurrent({ ...current, limite_campanhas: e.target.value })}
-                  />
-                </FieldRow>
-                <FieldRow label="Limite mensagens" description="integer">
-                  <Input
-                    type="number"
-                    value={current.limite_mensagens ?? ""}
-                    onChange={(e) => setCurrent({ ...current, limite_mensagens: e.target.value })}
-                  />
-                </FieldRow>
-                <FieldRow label="Limite funcionários" description="integer">
-                  <Input
-                    type="number"
-                    value={current.limite_funcionarios ?? ""}
-                    onChange={(e) => setCurrent({ ...current, limite_funcionarios: e.target.value })}
-                  />
-                </FieldRow>
-              </div>
-            </div>
-
-            <FieldRow label="Funcionalidades (jsonb)" description='Ex.: ["chat", "templates"] ou {"x": true}'>
-              <Textarea
-                value={
-                  typeof current.funcionalidades === "string"
-                    ? current.funcionalidades
-                    : JSON.stringify(current.funcionalidades ?? [], null, 2)
-                }
-                onChange={(e) => setCurrent({ ...current, funcionalidades: e.target.value })}
-                rows={6}
-                className="font-mono"
-              />
-            </FieldRow>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FieldRow label="ID Checkout">
-                <Input
-                  value={current.id_checkout ?? ""}
-                  onChange={(e) => setCurrent({ ...current, id_checkout: e.target.value })}
-                />
-              </FieldRow>
-              <FieldRow label="Suporte" description="text (ex.: email, whatsapp, prioridade)">
-                <Input value={current.suporte ?? ""} onChange={(e) => setCurrent({ ...current, suporte: e.target.value })} />
-              </FieldRow>
-              <FieldRow label="Chat ao vivo" description="text (ex.: simplificado, completo)">
-                <Input
-                  value={current.chat_ao_vivo ?? ""}
-                  onChange={(e) => setCurrent({ ...current, chat_ao_vivo: e.target.value })}
-                />
-              </FieldRow>
-              <FieldRow label="Templates" description="text (ex.: basicos, completos)">
-                <Input
-                  value={current.templates ?? ""}
-                  onChange={(e) => setCurrent({ ...current, templates: e.target.value })}
-                />
-              </FieldRow>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FieldRow label="Criado em" description="timestamp">
-                <Input
-                  type="datetime-local"
-                  value={toDatetimeLocal(current.criado_em ?? null)}
-                  onChange={(e) => setCurrent({ ...current, criado_em: e.target.value })}
-                />
-              </FieldRow>
-              <FieldRow label="Atualizado em" description="timestamp">
-                <Input
-                  type="datetime-local"
-                  value={toDatetimeLocal(current.atualizado_em ?? null)}
-                  onChange={(e) => setCurrent({ ...current, atualizado_em: e.target.value })}
-                />
-              </FieldRow>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FieldRow label="Ativo" description="boolean">
-                <div className="flex items-center gap-3">
-                  <Switch checked={!!current.ativo} onCheckedChange={(v) => setCurrent({ ...current, ativo: v })} />
-                  <span className="text-sm text-muted-foreground">{current.ativo ? "Sim" : "Não"}</span>
-                </div>
-              </FieldRow>
-
-              <FieldRow label="API oficial" description="boolean">
-                <div className="flex items-center gap-3">
-                  <Switch checked={!!current.api_oficial} onCheckedChange={(v) => setCurrent({ ...current, api_oficial: v })} />
-                  <span className="text-sm text-muted-foreground">{current.api_oficial ? "Sim" : "Não"}</span>
-                </div>
-              </FieldRow>
-
-              <FieldRow label="App mobile" description="boolean">
-                <div className="flex items-center gap-3">
-                  <Switch checked={!!current.app_mobile} onCheckedChange={(v) => setCurrent({ ...current, app_mobile: v })} />
-                  <span className="text-sm text-muted-foreground">{current.app_mobile ? "Sim" : "Não"}</span>
-                </div>
-              </FieldRow>
-
-              <FieldRow label="App desktop" description="boolean">
-                <div className="flex items-center gap-3">
-                  <Switch checked={!!current.app_desktop} onCheckedChange={(v) => setCurrent({ ...current, app_desktop: v })} />
-                  <span className="text-sm text-muted-foreground">{current.app_desktop ? "Sim" : "Não"}</span>
-                </div>
-              </FieldRow>
-
-              <FieldRow label="Gerente dedicado" description="boolean">
-                <div className="flex items-center gap-3">
-                  <Switch
-                    checked={!!current.gerente_conta_dedicado}
-                    onCheckedChange={(v) => setCurrent({ ...current, gerente_conta_dedicado: v })}
-                  />
-                  <span className="text-sm text-muted-foreground">{current.gerente_conta_dedicado ? "Sim" : "Não"}</span>
-                </div>
-              </FieldRow>
-
-              <FieldRow label="SLA garantido" description="boolean">
-                <div className="flex items-center gap-3">
-                  <Switch checked={!!current.sla_garantido} onCheckedChange={(v) => setCurrent({ ...current, sla_garantido: v })} />
-                  <span className="text-sm text-muted-foreground">{current.sla_garantido ? "Sim" : "Não"}</span>
-                </div>
-              </FieldRow>
-
-              <FieldRow label="Treinamento incluído" description="boolean">
-                <div className="flex items-center gap-3">
-                  <Switch
-                    checked={!!current.treinamento_incluido}
-                    onCheckedChange={(v) => setCurrent({ ...current, treinamento_incluido: v })}
-                  />
-                  <span className="text-sm text-muted-foreground">{current.treinamento_incluido ? "Sim" : "Não"}</span>
-                </div>
-              </FieldRow>
-            </div>
+      {/* Modal Customizado - SEM Dialog do Radix UI */}
+      {showDialog && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 50,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            pointerEvents: 'auto'
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !saving) {
+              setShowDialog(false)
+            }
+          }}
+        >
+          <div
+            style={{
+              width: '1100px',
+              maxWidth: '96vw',
+              maxHeight: '85vh',
+              backgroundColor: 'hsl(var(--background))',
+              borderRadius: '8px',
+              border: '1px solid hsl(var(--border))',
+              padding: '24px',
+              overflowY: 'auto',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+              display: 'flex',
+              flexDirection: 'column',
+              pointerEvents: 'auto',
+              position: 'relative',
+              zIndex: 100
+            }}
+            onClick={(e) => {
+              // Só prevenir se clicar no próprio container, não nos inputs
+              if (e.target === e.currentTarget) {
+                e.stopPropagation()
+              }
+            }}
+          >
+            <PlanoForm
+              key={isEdit ? `edit-${originalId}` : 'create'}
+              initialData={current}
+              isEdit={isEdit}
+              originalId={originalId}
+              saving={saving}
+              onSave={handleSave}
+              onCancel={() => setShowDialog(false)}
+            />
           </div>
-
-          <div className="flex items-center justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => setShowDialog(false)} disabled={saving}>
-              Cancelar
-            </Button>
-            <Button className="bg-red-500 hover:bg-red-600" onClick={handleSave} disabled={saving}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              <span className={saving ? "ml-2" : ""}>{saving ? "Salvando..." : "Salvar"}</span>
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+        </div>
+      )}
     </div>
   )
 }

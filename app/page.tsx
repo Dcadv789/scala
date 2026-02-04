@@ -1,182 +1,176 @@
 "use client"
 
-import { Shader, ChromaFlow, Swirl } from "shaders/react"
-import { CustomCursor } from "@/components/custom-cursor"
-import { GrainOverlay } from "@/components/grain-overlay"
-import { HeroSection } from "@/components/landing/hero-section"
-import { FeaturesSection } from "@/components/landing/features-section"
-import { PricingSection } from "@/components/landing/pricing-section"
-import { MassDispatchSection } from "@/components/landing/mass-dispatch-section"
-import { TestimonialsSection } from "@/components/landing/testimonials-section"
-import { DownloadPageSection } from "@/components/landing/download-page-section"
-import { SignupSection } from "@/components/landing/signup-section"
-import { MagneticButton } from "@/components/magnetic-button"
-import { useRef, useEffect, useState } from "react"
-import Image from "next/image"
+import { useState, useEffect, useRef } from "react"
+import { Menu, X } from "lucide-react"
+import { NewHero } from "@/components/landing/new-hero"
+import { FeaturesMarquee } from "@/components/landing/features-marquee"
+import { CentralizedFeatures } from "@/components/landing/centralized-features"
+import { AllFeatures } from "@/components/landing/all-features"
+import { Automations } from "@/components/landing/automations"
+import { FeaturesTabs } from "@/components/landing/features-tabs"
+import { CTASection } from "@/components/landing/cta-section"
+import { NewPricing } from "@/components/landing/new-pricing"
+import { NewFooter } from "@/components/landing/new-footer"
 
-export default function Home() {
-  const [isLoaded, setIsLoaded] = useState(true)
-  const [isMobile, setIsMobile] = useState(false)
+export default function LandingPage() {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [activeSection, setActiveSection] = useState(0)
-  const shaderContainerRef = useRef<HTMLDivElement>(null)
+  const [isLoaded, setIsLoaded] = useState(false)
 
-  const sectionIds = ["inicio", "recursos", "disparos", "planos", "depoimentos", "download", "criar-conta"]
+  useEffect(() => {
+    setIsLoaded(true)
+  }, [])
+
+  useEffect(() => {
+    if (mobileMenuOpen) {
+      document.body.style.overflow = "hidden"
+    } else {
+      document.body.style.overflow = "unset"
+    }
+    return () => {
+      document.body.style.overflow = "unset"
+    }
+  }, [mobileMenuOpen])
 
   const scrollToSection = (index: number) => {
-    const element = document.getElementById(sectionIds[index])
+    const sections = ["inicio", "funcionalidades", "recursos", "automacoes", "tabs", "planos"]
+    const element = document.getElementById(sections[index])
     if (element) {
-      element.scrollIntoView({ behavior: "smooth" })
+      element.scrollIntoView({ behavior: "smooth", block: "start" })
+      setMobileMenuOpen(false)
     }
   }
 
-  useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768)
-    }
-    checkMobile()
-    window.addEventListener("resize", checkMobile)
-    return () => window.removeEventListener("resize", checkMobile)
-  }, [])
-
-  // Track active section on scroll
-  useEffect(() => {
-    const handleScroll = () => {
-      const sections = sectionIds.map(id => document.getElementById(id))
-      const scrollPosition = window.scrollY + window.innerHeight / 3
-
-      sections.forEach((section, index) => {
-        if (section) {
-          const sectionTop = section.offsetTop
-          const sectionBottom = sectionTop + section.offsetHeight
-          if (scrollPosition >= sectionTop && scrollPosition < sectionBottom) {
-            setActiveSection(index)
-          }
-        }
-      })
-    }
-
-    window.addEventListener("scroll", handleScroll, { passive: true })
-    return () => window.removeEventListener("scroll", handleScroll)
-  }, [])
-
   return (
-    <main className="relative min-h-screen w-full bg-background">
-      <CustomCursor />
-      <GrainOverlay />
-
-      {/* Fixed Background */}
-      {!isMobile ? (
-        <div ref={shaderContainerRef} className="fixed inset-0 z-0" style={{ contain: "strict" }}>
-          <Shader className="h-full w-full">
-            <Swirl
-              colorA="#111c21"
-              colorB="#00bf63"
-              speed={0.3}
-              detail={0.3}
-              blend={40}
-              coarseX={10}
-              coarseY={10}
-              mediumX={10}
-              mediumY={10}
-              fineX={10}
-              fineY={10}
-            />
-            <ChromaFlow
-              baseColor="#111c21"
-              upColor="#00bf63"
-              downColor="#111c21"
-              leftColor="#00bf63"
-              rightColor="#00bf63"
-              intensity={0.7}
-              radius={1.5}
-              momentum={20}
-              maskType="alpha"
-              opacity={0.9}
-            />
-          </Shader>
-          <div className="absolute inset-0 bg-black/20" />
-        </div>
-      ) : (
-        <div className="fixed inset-0 z-0 bg-gradient-to-br from-[#111c21] via-[#0d1a1f] to-[#00bf63]">
-          <div className="absolute inset-0 bg-black/30" />
-        </div>
-      )}
-
+    <div className="relative min-h-screen w-full overflow-x-hidden bg-gradient-to-br from-[#00bf63] to-[#00d470]">
+      
       {/* Navigation */}
       <nav
-        className={`fixed left-0 right-0 top-0 z-50 flex items-center justify-between px-4 py-4 backdrop-blur-md bg-background/10 transition-opacity duration-700 sm:px-6 sm:py-5 md:px-12 md:py-7 ${
+        className={`fixed left-0 right-0 top-0 z-50 flex items-center justify-between px-4 py-4 backdrop-blur-md bg-gradient-to-r from-[#00bf63] to-[#00d470] border-b border-black/10 transition-opacity duration-700 sm:px-6 sm:py-5 md:px-12 md:py-7 ${
           isLoaded ? "opacity-100" : "opacity-0"
         }`}
       >
         <button
           onClick={() => scrollToSection(0)}
-          className="relative z-50 flex shrink-0 items-center transition-transform hover:scale-105"
+          className="flex items-center gap-2 text-xl font-bold text-[#0d1a1f] md:text-2xl"
         >
-          <Image
-            src="/zap-logo.png"
-            alt="ScalaZap"
-            width={180}
-            height={80}
-            className="h-8 w-auto sm:h-10 md:h-12"
-            priority
-          />
+          <span>ScalaZap</span>
         </button>
 
+        {/* Desktop Navigation */}
         <div className="ml-4 hidden items-center gap-6 md:ml-8 lg:ml-12 lg:flex lg:gap-8">
-          {["Inicio", "Recursos", "Disparos", "Planos", "Depoimentos", "Download", "Criar Conta"].map((item, index) => (
+          {["Início", "Funcionalidades", "Recursos", "Automações", "Integrações", "Planos"].map((item, index) => (
             <button
               key={item}
               onClick={() => scrollToSection(index)}
               className={`group relative whitespace-nowrap font-sans text-sm font-medium transition-colors ${
-                activeSection === index ? "text-foreground" : "text-foreground/80 hover:text-foreground"
+                activeSection === index ? "text-[#0d1a1f]" : "text-[#0d1a1f]/80 hover:text-[#0d1a1f]"
               }`}
             >
               {item}
               <span
-                className={`absolute -bottom-1 left-0 h-px bg-foreground transition-all duration-300 ${
+                className={`absolute -bottom-1 left-0 h-px bg-[#0d1a1f] transition-all duration-300 ${
                   activeSection === index ? "w-full" : "w-0 group-hover:w-full"
                 }`}
               />
             </button>
           ))}
+          <a
+            href="/login"
+            className="rounded-full bg-[#0d1a1f] px-6 py-2.5 text-sm font-medium text-white transition-all hover:bg-[#0d1a1f]/90"
+          >
+            Entrar
+          </a>
         </div>
 
-        <div className="ml-4 shrink-0">
-          <MagneticButton variant="secondary" href="/login" trackEvent="ViewLogin">
-            <span className="hidden sm:inline">Fazer Login</span>
-            <span className="sm:hidden">Login</span>
-          </MagneticButton>
-        </div>
+        {/* Mobile Menu Button */}
+        <button
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          className="relative z-50 ml-4 flex items-center justify-center rounded-lg bg-[#0d1a1f]/20 p-2 backdrop-blur-sm transition-colors hover:bg-[#0d1a1f]/30 lg:hidden"
+          aria-label="Toggle menu"
+        >
+          {mobileMenuOpen ? (
+            <X className="h-6 w-6 text-[#0d1a1f]" />
+          ) : (
+            <Menu className="h-6 w-6 text-[#0d1a1f]" />
+          )}
+        </button>
       </nav>
 
-      {/* Main Content - Vertical Scroll */}
-      <div
-        className={`relative z-10 transition-opacity duration-700 ${
-          isLoaded ? "opacity-100" : "opacity-0"
-        }`}
-      >
+      {/* Mobile Menu Overlay */}
+      {mobileMenuOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-[#0d1a1f]/95 backdrop-blur-lg lg:hidden"
+          onClick={() => setMobileMenuOpen(false)}
+        >
+          <div className="flex min-h-screen flex-col items-center justify-center gap-8 px-4">
+            {["Início", "Funcionalidades", "Recursos", "Automações", "Integrações", "Planos"].map((item, index) => (
+              <button
+                key={item}
+                onClick={() => scrollToSection(index)}
+                className="text-2xl font-medium text-white transition-colors hover:text-white/80"
+              >
+                {item}
+              </button>
+            ))}
+            <a
+              href="/login"
+              className="mt-4 rounded-full bg-white px-8 py-3 text-lg font-medium text-[#0d1a1f] transition-colors hover:bg-white/90"
+            >
+              Entrar
+            </a>
+          </div>
+        </div>
+      )}
+
+      {/* Main Content */}
+      <main>
+        
+        {/* Hero - Verde */}
         <div id="inicio">
-          <HeroSection scrollToSection={scrollToSection} />
+          <NewHero />
         </div>
-        <div id="recursos">
-          <FeaturesSection />
+
+        {/* Carrossel de Funcionalidades - Escuro */}
+        <div className="bg-[#0d1a1f]">
+          <FeaturesMarquee />
         </div>
-        <div id="disparos">
-          <MassDispatchSection />
+
+        {/* Funcionalidades Centralizadas - Escuro */}
+        <div id="funcionalidades" className="bg-[#0d1a1f]">
+          <CentralizedFeatures />
         </div>
-        <div id="planos">
-          <PricingSection />
+
+        {/* Todas as Funcionalidades - Verde */}
+        <div id="recursos" className="bg-gradient-to-br from-[#00bf63] to-[#00d470]">
+          <AllFeatures />
         </div>
-        <div id="depoimentos">
-          <TestimonialsSection />
+
+        {/* Automações - Escuro */}
+        <div id="automacoes" className="bg-[#0d1a1f]">
+          <Automations />
         </div>
-        <div id="download">
-          <DownloadPageSection />
+
+        {/* Tabs - Verde */}
+        <div id="tabs" className="bg-gradient-to-br from-[#00bf63] to-[#00d470]">
+          <FeaturesTabs />
         </div>
-        <div id="criar-conta">
-          <SignupSection />
+
+        {/* CTA Intermediário - Escuro */}
+        <div className="bg-[#0d1a1f]">
+          <CTASection />
         </div>
-      </div>
-    </main>
+
+        {/* Planos - Verde */}
+        <div id="planos" className="bg-gradient-to-br from-[#00bf63] to-[#00d470]">
+          <NewPricing />
+        </div>
+
+      </main>
+
+      {/* Footer - Escuro */}
+      <NewFooter />
+
+    </div>
   )
 }

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { Check, Zap } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -61,6 +61,13 @@ const plans = [
 ]
 
 export function NewPricing() {
+  const router = useRouter()
+
+  const handlePlanClick = (planId: string) => {
+    // Redirecionar para register com o plano selecionado
+    router.push(`/register?plan=${planId}`)
+  }
+
   return (
     <section className="relative w-full px-4 py-20 sm:px-6 md:px-12 md:py-32">
       <div className="mx-auto w-full max-w-7xl">
@@ -136,6 +143,7 @@ export function NewPricing() {
               </div>
 
               <Button
+                onClick={() => handlePlanClick(plan.id)}
                 className={`mb-8 w-full gap-2 ${
                   plan.popular
                     ? "bg-white hover:bg-white/90 text-[#0d1a1f]"
@@ -144,7 +152,7 @@ export function NewPricing() {
                 size="lg"
               >
                 <Zap className="h-5 w-5" />
-                {plan.id === "enterprise" ? "Assinar agora" : "Testar por 30 dias"}
+                Comece agora grátis
               </Button>
 
               <ul className="space-y-3">

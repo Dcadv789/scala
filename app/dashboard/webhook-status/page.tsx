@@ -8,8 +8,9 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RefreshCw, Copy, Check, AlertTriangle, CheckCircle, ExternalLink } from "lucide-react"
+import { PlanGuard } from "@/components/auth/plan-guard"
 
-export default function WebhookStatusPage() {
+function WebhookStatusPageContent() {
   const [loading, setLoading] = useState(false)
   const [debugData, setDebugData] = useState<any>(null)
   const [copied, setCopied] = useState<string | null>(null)
@@ -225,5 +226,13 @@ export default function WebhookStatusPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function WebhookStatusPage() {
+  return (
+    <PlanGuard>
+      <WebhookStatusPageContent />
+    </PlanGuard>
   )
 }

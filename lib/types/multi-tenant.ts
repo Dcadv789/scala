@@ -20,7 +20,7 @@ export interface Empresa {
 
 export interface Membro {
   id: string
-  id_usuario?: string // UUID do auth.users (Supabase) ou email/username
+  id_perfil: string // FK para perfis.id (que é o mesmo que auth.users.id)
   id_empresa: string
   nome: string
   email: string

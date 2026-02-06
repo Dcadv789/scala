@@ -4,6 +4,7 @@ import type React from "react"
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
+import { PlanGuard } from "@/components/auth/plan-guard"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -68,7 +69,7 @@ type ChatbotConnection = {
   label?: string
 }
 
-export default function ChatbotPage() {
+function ChatbotPageContent() {
   const [flows, setFlows] = useState<ChatbotFlow[]>([])
   const [selectedFlow, setSelectedFlow] = useState<ChatbotFlow | null>(null)
   const [showNewFlowDialog, setShowNewFlowDialog] = useState(false)
@@ -662,5 +663,13 @@ function NodeEditor({
         <Button onClick={() => onSave(editedNode)}>Salvar</Button>
       </DialogFooter>
     </div>
+  )
+}
+
+export default function ChatbotPage() {
+  return (
+    <PlanGuard>
+      <ChatbotPageContent />
+    </PlanGuard>
   )
 }

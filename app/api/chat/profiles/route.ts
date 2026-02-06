@@ -11,6 +11,12 @@ const supabase = createClient(
 export async function GET(request: NextRequest) {
   try {
     console.log("[Chat Profiles] ====== INICIANDO GET /api/chat/profiles ======")
+    
+    // Verificar se há id_conexao na query string (para superadmin filtrar por conexão)
+    const url = new URL(request.url)
+    const idConexao = url.searchParams.get("id_conexao")
+    console.log("[Chat Profiles] id_conexao da query:", idConexao)
+    
     console.log("[Chat Profiles] Headers recebidos:", {
       authorization: request.headers.get("authorization") ? "Presente" : "Ausente",
       xUserId: request.headers.get("x-user-id"),
@@ -23,6 +29,7 @@ export async function GET(request: NextRequest) {
     let isDono = false
     let perfilIdAtual: string | null = null
     let membroAtual: any = null
+    let empresaIdParaFiltrar: string | null = null // Empresa que será usada para filtrar agentes
     
     const authContext = await getAuthContext(request)
     
@@ -33,7 +40,7 @@ export async function GET(request: NextRequest) {
       console.log("[Chat Profiles] ✅ AuthContext encontrado:", {
         membroId: membroAtual.id,
         empresaId: empresaId,
-        membroIdUsuario: membroAtual.id_usuario
+        membroIdPerfil: membroAtual.id_perfil
       })
       
       // Obter id_perfil do membro atual
@@ -112,60 +119,9 @@ export async function GET(request: NextRequest) {
           isDono: isDono
         })
       } else {
-        // Fallback: buscar perfil usando id_usuario se não tiver id_perfil
-        if (membroAtual.id_usuario) {
-          console.log("[Chat Profiles] Tentando buscar perfil via id_usuario:", membroAtual.id_usuario)
-          const { data: perfilData, error: perfilError } = await supabase
-            .from("perfis")
-            .select("id")
-            .eq("id", membroAtual.id_usuario)
-            .maybeSingle()
-          
-          console.log("[Chat Profiles] Busca de perfil via id_usuario:", {
-            id_usuario: membroAtual.id_usuario,
-            perfilData: perfilData,
-            perfilError: perfilError?.message
-          })
-          
-          if (perfilData) {
-            perfilIdAtual = perfilData.id
-            console.log("[Chat Profiles] ✅ Perfil ID obtido via id_usuario:", perfilIdAtual)
-            
-            // Buscar membro usando id_perfil para obter o cargo
-            const { data: membroPorPerfil, error: membroPorPerfilError } = await supabase
-              .from("membros")
-              .select("cargo, id_perfil")
-              .eq("id_perfil", perfilIdAtual)
-              .eq("id_empresa", empresaId)
-              .maybeSingle()  // Removido filtro ativo que pode estar causando falha
-            
-            console.log("[Chat Profiles] Busca de membro por id_perfil (fallback):", {
-              id_perfil: perfilIdAtual,
-              empresaId: empresaId,
-              membroPorPerfil: membroPorPerfil,
-              membroPorPerfilError: membroPorPerfilError?.message
-            })
-            
-            if (membroPorPerfil) {
-              const cargoValue = membroPorPerfil.cargo
-              isDono = cargoValue === 'dono'
-              console.log("[Chat Profiles] Cargo obtido (fallback):", {
-                cargo: cargoValue,
-                isDono: isDono,
-                tipo_cargo: typeof cargoValue
-              })
-            } else {
-              console.warn("[Chat Profiles] ⚠️ Membro não encontrado por id_perfil (fallback)")
-              isDono = false
-            }
-          } else {
-            console.error("[Chat Profiles] ❌ Perfil não encontrado via id_usuario")
-            isDono = false
-          }
-        } else {
-          console.error("[Chat Profiles] ❌ Não foi possível obter perfil: membro sem id_perfil e sem id_usuario")
-          isDono = false
-        }
+        // Se não encontrou id_perfil, retornar erro
+        console.error("[Chat Profiles] ❌ Não foi possível obter perfil: membro sem id_perfil")
+        isDono = false
       }
       
       console.log("[Chat Profiles] ====================================")
@@ -239,6 +195,42 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    // Se id_conexao foi fornecido, buscar a empresa da conexão
+    // Isso permite que superadmin veja agentes da empresa da conexão selecionada
+    if (idConexao) {
+      console.log("═══════════════════════════════════════════════════════════")
+      console.log("[Chat Profiles] 🔍 FILTRO POR CONEXÃO ATIVADO")
+      console.log("═══════════════════════════════════════════════════════════")
+      console.log("[Chat Profiles] 🔗 ID Conexão recebido:", idConexao)
+      
+      const { data: conexao, error: conexaoError } = await supabase
+        .from("conexoes")
+        .select("id_empresa")
+        .eq("id", idConexao)
+        .single()
+      
+      if (conexaoError || !conexao) {
+        console.error("[Chat Profiles] ❌ Erro ao buscar conexão:", conexaoError?.message)
+        return NextResponse.json(
+          { success: false, error: "Conexão não encontrada" },
+          { status: 404 }
+        )
+      }
+      
+      empresaIdParaFiltrar = conexao.id_empresa
+      console.log("[Chat Profiles] ✅ Empresa da conexão encontrada:", empresaIdParaFiltrar)
+      console.log("[Chat Profiles] 🎯 FILTRO FINAL: Mostrando agentes da EMPRESA DA CONEXÃO")
+      console.log("[Chat Profiles] 📊 Empresa do usuário logado:", empresaId, "(NÃO será usada)")
+      console.log("═══════════════════════════════════════════════════════════")
+    } else {
+      // Se não há id_conexao, usar a empresa do usuário logado
+      empresaIdParaFiltrar = empresaId
+      console.log("═══════════════════════════════════════════════════════════")
+      console.log("[Chat Profiles] 🎯 FILTRO FINAL: Mostrando agentes da EMPRESA DO USUÁRIO")
+      console.log("[Chat Profiles] 📊 Empresa ID:", empresaIdParaFiltrar)
+      console.log("═══════════════════════════════════════════════════════════")
+    }
+
     // Se for dono, buscar todos os perfis da empresa
     // Se não for, buscar apenas o perfil do usuário atual
     let query = supabase
@@ -252,13 +244,26 @@ export async function GET(request: NextRequest) {
     
     if (isDono) {
       // Dono: buscar todos os perfis que têm membros na empresa
-      console.log("[Chat Profiles] 👑 DONO - buscando todos os perfis da empresa:", empresaId)
+      // Se id_conexao foi fornecido, usar empresaIdParaFiltrar (empresa da conexão)
+      // Caso contrário, usar empresaId (empresa do usuário)
+      const empresaParaBuscar = empresaIdParaFiltrar || empresaId
+      console.log("[Chat Profiles] 👑 DONO - buscando todos os perfis da empresa:", empresaParaBuscar)
+      console.log("[Chat Profiles] 📊 FILTRO APLICADO:", {
+        tipoUsuario: "DONO",
+        empresaIdUsuario: empresaId,
+        empresaIdConexao: empresaIdParaFiltrar,
+        empresaFinalUsada: empresaParaBuscar,
+        idConexaoFornecido: !!idConexao,
+        filtroFinal: idConexao 
+          ? `🔑 Filtrando pela EMPRESA DA CONEXÃO ${empresaParaBuscar}`
+          : `👤 Filtrando pela EMPRESA DO USUÁRIO ${empresaParaBuscar}`
+      })
       
-      // Buscar todos os membros ativos da empresa
+      // Buscar todos os membros ativos da empresa (da conexão ou do usuário)
       const { data: membrosEmpresa, error: membrosError } = await supabase
         .from("membros")
         .select("id_perfil")
-        .eq("id_empresa", empresaId)
+        .eq("id_empresa", empresaParaBuscar)
         .eq("ativo", "TRUE") // PostgreSQL usa TRUE em maiúsculas
       
       console.log("[Chat Profiles] Membros da empresa encontrados:", {
@@ -334,7 +339,7 @@ export async function GET(request: NextRequest) {
           xUserId,
           empresaId,
           membroId: membroAtual?.id,
-          membroIdUsuario: membroAtual?.id_usuario,
+          membroIdPerfil: membroAtual?.id_perfil,
           membroCargo: membroAtual?.cargo
         })
         return NextResponse.json(
@@ -345,7 +350,7 @@ export async function GET(request: NextRequest) {
               xUserId,
               empresaId,
               membroId: membroAtual?.id,
-              membroIdUsuario: membroAtual?.id_usuario,
+              membroIdPerfil: membroAtual?.id_perfil,
               membroCargo: membroAtual?.cargo
             }
           },
@@ -368,40 +373,32 @@ export async function GET(request: NextRequest) {
     
     console.log("[Chat Profiles] ✅ Perfis encontrados:", perfis?.length || 0)
 
-    console.log("[Chat Profiles] ✅ Perfis encontrados:", {
-      total: perfis?.length || 0,
-      perfis: perfis?.map((p: any) => ({ id: p.id, nome: p.nome_completo, email: p.email }))
-    })
-    
-    console.log("[Chat Profiles] ========================================")
-    console.log("[Chat Profiles] 📤 RESPOSTA FINAL QUE SERÁ ENVIADA")
-    console.log("[Chat Profiles] ========================================")
-    console.log("[Chat Profiles] success: true")
-    console.log("[Chat Profiles] perfisCount:", perfis?.length || 0)
-    console.log("[Chat Profiles] isDono ANTES do return:", isDono)
-    console.log("[Chat Profiles] tipo de isDono:", typeof isDono)
-    console.log("[Chat Profiles] isDono em JSON:", JSON.stringify(isDono))
-    console.log("[Chat Profiles] isDono === true?", isDono === true)
-    console.log("[Chat Profiles] isDono === false?", isDono === false)
-    console.log("[Chat Profiles] empresaId:", empresaId)
-    console.log("[Chat Profiles] perfilIdAtual:", perfilIdAtual)
-    
-    // Garantir que isDono seja explicitamente um boolean
+    // IMPORTANTE: isDono sempre deve ser baseado no usuário logado, não muda quando tem id_conexao
+    // id_conexao apenas muda qual empresa usar para filtrar os agentes, mas o usuário continua sendo dono
     const isDonoFinal = Boolean(isDono)
-    console.log("[Chat Profiles] isDonoFinal (após Boolean()):", isDonoFinal)
-    console.log("[Chat Profiles] tipo de isDonoFinal:", typeof isDonoFinal)
-    console.log("[Chat Profiles] isDonoFinal === true?", isDonoFinal === true)
     
+    console.log("═══════════════════════════════════════════════════════════")
+    console.log("[Chat Profiles] 📤 RESPOSTA FINAL")
+    console.log("═══════════════════════════════════════════════════════════")
+    console.log("[Chat Profiles] ✅ Sucesso: true")
+    console.log("[Chat Profiles] 👥 Total de Perfis:", perfis?.length || 0)
+    console.log("[Chat Profiles] 🔑 É Dono (baseado no usuário logado):", isDonoFinal)
+    console.log("[Chat Profiles] 🏢 Empresa Usada para Filtrar:", empresaIdParaFiltrar || empresaId)
+    if (idConexao) {
+      console.log("[Chat Profiles] 🔗 Conexão Fornecida:", idConexao)
+      console.log("[Chat Profiles] 🎯 FILTRO: Agentes da empresa da conexão")
+      console.log("[Chat Profiles] ⚠️ IMPORTANTE: isDono continua", isDonoFinal, "(não muda por ter id_conexao)")
+    } else {
+      console.log("[Chat Profiles] 🎯 FILTRO: Agentes da empresa do usuário")
+    }
+    console.log("[Chat Profiles] 📋 Perfis Retornados:", perfis?.map((p: any) => ({ id: p.id, nome: p.nome_completo })))
+    console.log("═══════════════════════════════════════════════════════════")
+
     const respostaFinal = {
       success: true,
       perfis: perfis || [],
-      isDono: isDonoFinal
+      isDono: isDonoFinal // Sempre retorna o isDono do usuário logado, independente de id_conexao
     }
-    
-    console.log("[Chat Profiles] Objeto respostaFinal:", JSON.stringify(respostaFinal, null, 2))
-    console.log("[Chat Profiles] respostaFinal.isDono:", respostaFinal.isDono)
-    console.log("[Chat Profiles] tipo de respostaFinal.isDono:", typeof respostaFinal.isDono)
-    console.log("[Chat Profiles] ========================================")
 
     return NextResponse.json(respostaFinal)
   } catch (error: any) {

@@ -64,7 +64,7 @@ import {
   type VoiceMediaItem,
 } from "@/lib/store"
 
-export default function ScalaVoicePage() {
+function ScalaVoicePageContent() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [activeTab, setActiveTab] = useState("biblioteca")
   const { toast } = useToast()
@@ -1094,5 +1094,13 @@ export default function ScalaVoicePage() {
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+export default function ScalaVoicePage() {
+  return (
+    <PlanGuard>
+      <ScalaVoicePageContent />
+    </PlanGuard>
   )
 }

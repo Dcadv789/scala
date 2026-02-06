@@ -13,8 +13,9 @@ import Link from "next/link"
 import { useToast } from "@/hooks/use-toast"
 import { WEBHOOK_CONFIG } from "@/lib/webhook-config"
 import { authFetch } from "@/lib/auth-fetch"
+import { PlanGuard } from "@/components/auth/plan-guard"
 
-export default function ConnectionsPage() {
+function ConnectionsPageContent() {
   const [connections, setConnections] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingConnections, setIsLoadingConnections] = useState(true)
@@ -1057,5 +1058,13 @@ export default function ConnectionsPage() {
         </TabsContent>
       </Tabs>
     </div>
+  )
+}
+
+export default function ConnectionsPage() {
+  return (
+    <PlanGuard>
+      <ConnectionsPageContent />
+    </PlanGuard>
   )
 }

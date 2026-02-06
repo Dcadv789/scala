@@ -1,67 +1,64 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
-import { cookies } from "next/headers"
+import { getAuthContext } from "@/lib/api-auth-multi-tenant"
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-// Função para obter o usuário autenticado
-async function getAuthUser(request: NextRequest) {
-  try {
-    const cookieStore = await cookies()
-    const accessToken = cookieStore.get("sb-access-token")?.value ||
-      cookieStore.get("supabase-auth-token")?.value
-    
-    if (accessToken) {
-      const { data: { user } } = await supabase.auth.getUser(accessToken)
-      return user
-    }
-    
-    const authHeader = request.headers.get("authorization")
-    if (authHeader?.startsWith("Bearer ")) {
-      const { data: { user } } = await supabase.auth.getUser(authHeader.substring(7))
-      return user
-    }
-    
-    return null
-  } catch {
-    return null
-  }
-}
-
 export async function GET(request: NextRequest) {
   try {
-    const user = await getAuthUser(request)
+    const authContext = await getAuthContext(request)
     
     // Se nao autenticado, retornar vazio (seguranca)
-    if (!user) {
+    if (!authContext) {
       return NextResponse.json({ success: true, conversations: [], totalMessages: 0 })
     }
     
-    // Buscar conexoes do usuario para filtrar mensagens
-    const { data: userConnections } = await supabase
+    // Buscar conexoes da empresa para filtrar mensagens
+    console.log("[Messages API] ====== Buscando mensagens ======")
+    console.log("[Messages API] Empresa ID:", authContext.empresaId)
+    
+    const { data: userConnections, error: connectionsError } = await supabase
       .from("conexoes")
       .select("id_numero_telefone")
-      .eq("id_usuario", user.id)
+      .eq("id_empresa", authContext.empresaId)
     
-    const phoneNumberIds = userConnections?.map(c => c.phone_number_id).filter(Boolean) || []
+    if (connectionsError) {
+      console.error("[Messages API] ❌ Erro ao buscar conexões:", connectionsError)
+      return NextResponse.json({ error: connectionsError.message }, { status: 500 })
+    }
+    
+    console.log("[Messages API] 📊 Conexões encontradas:", userConnections?.length || 0)
+    console.log("[Messages API] 📋 Dados das conexões:", userConnections)
+    
+    // CORREÇÃO: Usar id_numero_telefone (não phone_number_id)
+    const phoneNumberIds = userConnections?.map(c => c.id_numero_telefone).filter(Boolean) || []
+    
+    console.log("[Messages API] 📞 Phone Number IDs extraídos:", phoneNumberIds)
     
     if (phoneNumberIds.length === 0) {
+      console.warn("[Messages API] ⚠️ Nenhum phone_number_id encontrado para a empresa")
       return NextResponse.json({ success: true, conversations: [], totalMessages: 0 })
     }
     
     // Buscar mensagens apenas das conexoes do usuario
+    console.log("[Messages API] 🔍 Buscando mensagens com filtro:", { phoneNumberIds })
     const { data: messages, error } = await supabase
       .from("mensagens_webhook")
       .select("*")
       .in("id_numero_telefone", phoneNumberIds)
       .order("data_hora", { ascending: true })
+    
+    console.log("[Messages API] 📨 Mensagens encontradas:", messages?.length || 0)
 
     if (error) {
+      console.error("[Messages API] ❌ Erro ao buscar mensagens:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
+    
+    console.log("[Messages API] ✅ Mensagens carregadas com sucesso")
 
     // Agrupar mensagens por contato
     const conversationsMap = new Map<string, any>()

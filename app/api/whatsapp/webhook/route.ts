@@ -83,26 +83,81 @@ export async function POST(request: NextRequest) {
       const contacts = value.contacts || []
       const phoneNumberId = value.metadata?.phone_number_id || "unknown"
       
-      console.log("[Webhook POST] Phone Number ID:", phoneNumberId)
-      console.log("[Webhook POST] Contacts:", contacts.length)
+      console.log("[Webhook POST] ====== PROCESSANDO MENSAGENS ======")
+      console.log("[Webhook POST] 📞 Phone Number ID recebido do webhook:", phoneNumberId)
+      console.log("[Webhook POST] 📋 Metadata completa:", JSON.stringify(value.metadata, null, 2))
+      console.log("[Webhook POST] 👥 Contacts recebidos:", contacts.length)
 
       // 1. Identificar a empresa pelo phone_number_id na tabela conexoes
+      console.log("[Webhook POST] 🔍 Buscando conexão no banco com id_numero_telefone:", phoneNumberId)
       const { data: conexao, error: conexaoError } = await supabase
         .from("conexoes")
-        .select("id_empresa, id")
+        .select("id_empresa, id, id_numero_telefone, nome")
         .eq("id_numero_telefone", phoneNumberId)
         .eq("status", "connected")
         .single()
 
-      if (conexaoError || !conexao || !conexao.id_empresa) {
-        console.error("[Webhook POST] ERRO: Não foi possível identificar a empresa para phone_number_id:", phoneNumberId, conexaoError)
-        // Continuar mesmo assim, mas sem id_empresa
+      if (conexaoError) {
+        console.error("[Webhook POST] ❌ ERRO ao buscar conexão:", conexaoError.message)
+        console.error("[Webhook POST] 📋 Detalhes do erro:", conexaoError)
+        
+        // Tentar buscar sem filtro de status para debug
+        const { data: conexaoSemStatus } = await supabase
+          .from("conexoes")
+          .select("id_empresa, id, id_numero_telefone, nome, status")
+          .eq("id_numero_telefone", phoneNumberId)
+          .maybeSingle()
+        
+        if (conexaoSemStatus) {
+          console.log("[Webhook POST] ⚠️ Conexão encontrada mas com status diferente:", conexaoSemStatus.status)
+        } else {
+          console.error("[Webhook POST] ❌ Nenhuma conexão encontrada com id_numero_telefone:", phoneNumberId)
+          // Listar todas as conexões para debug
+          const { data: todasConexoes } = await supabase
+            .from("conexoes")
+            .select("id, id_numero_telefone, nome, status")
+            .limit(10)
+          console.log("[Webhook POST] 📋 Primeiras 10 conexões no banco:", todasConexoes)
+        }
+      } else if (conexao) {
+        console.log("[Webhook POST] ✅ Conexão encontrada:", {
+          id: conexao.id,
+          nome: conexao.nome,
+          id_numero_telefone: conexao.id_numero_telefone,
+          id_empresa: conexao.id_empresa
+        })
+      } else {
+        console.error("[Webhook POST] ❌ Conexão não encontrada para phone_number_id:", phoneNumberId)
       }
 
-      const idEmpresa = conexao?.id_empresa
-      const idConexao = conexao?.id
+      let idEmpresa = conexao?.id_empresa
+      let idConexao = conexao?.id
 
-      console.log("[Webhook POST] Empresa identificada:", idEmpresa)
+      console.log("[Webhook POST] 🏢 Empresa identificada:", idEmpresa)
+      console.log("[Webhook POST] 🔗 ID da conexão:", idConexao)
+      
+      // Validação: Se não encontrou conexão, tentar buscar por qualquer status
+      if (!conexao && phoneNumberId !== "unknown") {
+        console.log("[Webhook POST] ⚠️ Conexão não encontrada com status 'connected', tentando buscar sem filtro de status...")
+        const { data: conexaoQualquerStatus } = await supabase
+          .from("conexoes")
+          .select("id_empresa, id, id_numero_telefone, nome, status")
+          .eq("id_numero_telefone", phoneNumberId)
+          .maybeSingle()
+        
+        if (conexaoQualquerStatus) {
+          console.log("[Webhook POST] ✅ Conexão encontrada (status:", conexaoQualquerStatus.status, "):", conexaoQualquerStatus.id)
+          // Usar esta conexão mesmo que não esteja com status "connected"
+          if (!idEmpresa) {
+            idEmpresa = conexaoQualquerStatus.id_empresa
+            console.log("[Webhook POST] 🔄 Usando empresa da conexão encontrada (fallback):", idEmpresa)
+          }
+          if (!idConexao) {
+            idConexao = conexaoQualquerStatus.id
+            console.log("[Webhook POST] 🔄 Usando ID da conexão encontrada (fallback):", idConexao)
+          }
+        }
+      }
 
       for (const message of messages) {
         const contact = contacts.find((c: any) => c.wa_id === message.from)
@@ -190,8 +245,9 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // 3. Salvar mensagem na tabela mensagens (não mensagens_webhook)
-        const { error: msgError } = await supabase.from("mensagens").insert({
+        // 3. Salvar mensagem na tabela mensagens (principal)
+        console.log("[Webhook POST] 💾 Salvando mensagem na tabela 'mensagens'...")
+        const mensagemData = {
           id: message.id,
           id_empresa: idEmpresa || null,
           id_contato: idContato,
@@ -204,17 +260,31 @@ export async function POST(request: NextRequest) {
           id_mensagem_whatsapp: message.id,
           criado_em: new Date(Number(message.timestamp) * 1000).toISOString(),
           atualizado_em: new Date().toISOString()
+        }
+        
+        console.log("[Webhook POST] 📋 Dados da mensagem a salvar:", {
+          id: mensagemData.id,
+          id_empresa: mensagemData.id_empresa,
+          id_contato: mensagemData.id_contato,
+          id_conexao: mensagemData.id_conexao,
+          tipo_midia: mensagemData.tipo_midia,
+          conteudo_preview: mensagemData.conteudo.substring(0, 50)
         })
+        
+        const { error: msgError } = await supabase.from("mensagens").insert(mensagemData)
 
         if (msgError) {
-          console.error("[Webhook POST] ERRO ao salvar mensagem:", msgError.message, msgError.details)
+          console.error("[Webhook POST] ❌ ERRO ao salvar mensagem na tabela 'mensagens':", msgError.message)
+          console.error("[Webhook POST] 📋 Detalhes do erro:", msgError.details)
+          console.error("[Webhook POST] 📋 Código do erro:", msgError.code)
         } else {
-          console.log("[Webhook POST] Mensagem salva com sucesso:", message.id)
+          console.log("[Webhook POST] ✅ Mensagem salva com sucesso na tabela 'mensagens':", message.id)
         }
 
-        // 4. Também salvar na mensagens_webhook para compatibilidade (se a tabela existir)
+        // 4. Também salvar na mensagens_webhook para compatibilidade
+        console.log("[Webhook POST] 💾 Salvando mensagem na tabela 'mensagens_webhook' (compatibilidade)...")
         try {
-          await supabase.from("mensagens_webhook").insert({
+          const webhookData = {
             id: message.id,
             numero_remetente: message.from,
             numero_destinatario: value.metadata?.display_phone_number || phoneNumberId,
@@ -227,9 +297,24 @@ export async function POST(request: NextRequest) {
             processado: false,
             respondido: false,
             id_empresa: idEmpresa || null
+          }
+          
+          console.log("[Webhook POST] 📋 Dados para mensagens_webhook:", {
+            id: webhookData.id,
+            id_numero_telefone: webhookData.id_numero_telefone,
+            id_empresa: webhookData.id_empresa,
+            numero_remetente: webhookData.numero_remetente
           })
-        } catch (e) {
-          // Ignorar se a tabela não existir
+          
+          const { error: webhookError } = await supabase.from("mensagens_webhook").insert(webhookData)
+          
+          if (webhookError) {
+            console.error("[Webhook POST] ❌ ERRO ao salvar em mensagens_webhook:", webhookError.message)
+          } else {
+            console.log("[Webhook POST] ✅ Mensagem salva com sucesso na tabela 'mensagens_webhook':", message.id)
+          }
+        } catch (e: any) {
+          console.error("[Webhook POST] ❌ Exceção ao salvar em mensagens_webhook:", e.message)
         }
       }
     } else {

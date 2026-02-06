@@ -172,19 +172,26 @@ export async function POST(request: NextRequest) {
       empresa_nome: authContext.membro.empresa?.nome
     })
 
-    // Obter o id_usuario correto (deve ser o ID do Supabase Auth, não o ID do membro)
-    // id_usuario na tabela conexoes referencia auth.users.id (não membros.id)
-    const idUsuario = authContext.membro.id_usuario
-    
-    if (!idUsuario) {
-      console.error("[Connections API] Membro não tem id_usuario (Supabase Auth ID)")
+    // Verificar se o membro tem id_perfil (para logs)
+    console.log("[Connections API] 🔍 Verificando dados do membro...")
+    console.log("[Connections API] 📊 Dados do membro:", {
+      membro_id: authContext.membro.id,
+      id_perfil: authContext.membro.id_perfil,
+      email: authContext.membro.email
+    })
+
+    // Validar que o email do membro existe (obrigatório)
+    const emailUsuario = authContext.membro.email
+    if (!emailUsuario) {
+      console.error("[Connections API] ❌ Email do membro não encontrado")
+      console.error("[Connections API] 📋 Dados completos do membro:", JSON.stringify(authContext.membro, null, 2))
       return NextResponse.json({ 
         success: false, 
-        error: "Erro de autenticação: usuário não vinculado ao sistema de autenticação." 
+        error: "Erro de autenticação: email do usuário não encontrado. Entre em contato com o suporte." 
       }, { status: 500 })
     }
 
-    console.log("[Connections API] Usando id_usuario (Supabase Auth ID):", idUsuario)
+    console.log("[Connections API] ✅ Email do usuário validado:", emailUsuario)
 
     // Criar conexão associada à empresa e membro
     const { data, error } = await supabase
@@ -202,8 +209,7 @@ export async function POST(request: NextRequest) {
         numero_exibicao: display_phone_number || "",
         // Multi-Tenant: associar à empresa e membro
         id_empresa: authContext.empresaId, // OBRIGATÓRIO - associa à empresa
-        id_usuario: idUsuario, // ID do Supabase Auth (auth.users.id) - deve existir na constraint
-        email_usuario: authContext.membro.email,
+        email_usuario: emailUsuario, // OBRIGATÓRIO - email do usuário logado
       })
       .select()
       .single()

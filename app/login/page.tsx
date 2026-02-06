@@ -20,10 +20,27 @@ import type React from "react"
 import { createClient } from "@supabase/supabase-js"
 import { EmpresaSelector } from "@/components/auth/empresa-selector"
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+// Singleton do cliente Supabase para evitar múltiplas instâncias
+let supabaseInstance: ReturnType<typeof createClient> | null = null
+
+function getSupabaseClient() {
+  if (!supabaseInstance) {
+    supabaseInstance = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        auth: {
+          persistSession: false, // Não persistir sessão automaticamente
+          autoRefreshToken: false, // Desabilitar refresh automático
+          detectSessionInUrl: false
+        }
+      }
+    )
+  }
+  return supabaseInstance
+}
+
+const supabase = getSupabaseClient()
 
 export default function LoginPage() {
   const router = useRouter()

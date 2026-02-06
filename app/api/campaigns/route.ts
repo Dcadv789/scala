@@ -179,7 +179,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Criar campanha (usando campos corretos da tabela)
-    // Nota: id_usuario referencia auth.users.id (Supabase Auth), não tem foreign key
     const campaignData: any = {
       nome: name,
       id_conexao: connectionId,
@@ -191,7 +190,6 @@ export async function POST(request: NextRequest) {
       qtd_falhas: 0,
       status: status || "draft",
       tipo: "template",
-      id_usuario: authContext.membro.id_usuario || null, // ID do Supabase Auth (pode ser null)
       email_usuario: authContext.membro.email,
       id_empresa: authContext.empresaId,
       configuracoes: { templateId, templateName }
@@ -219,7 +217,6 @@ export async function POST(request: NextRequest) {
         id_campanha: campaign.id,
         telefone: r.phone || r.telefone || r.numero,
         nome: r.name || r.nome || r.phone,
-        id_usuario: authContext.membro.id_usuario,
         id_empresa: authContext.empresaId
       }))
 

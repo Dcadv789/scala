@@ -5,6 +5,7 @@ import { DashboardNav } from "@/components/dashboard/dashboard-nav"
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { MobileNav } from "@/components/dashboard/mobile-nav"
 import { PaymentPendingBanner } from "@/components/dashboard/payment-pending-banner"
+import { PlanGuard } from "@/components/auth/plan-guard"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -42,7 +43,7 @@ type Contact = {
   lastContact?: string
 }
 
-export default function ContactsPage() {
+function ContactsPageContent() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [contacts, setContacts] = useState<Contact[]>([])
@@ -734,5 +735,13 @@ export default function ContactsPage() {
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+export default function ContactsPage() {
+  return (
+    <PlanGuard>
+      <ContactsPageContent />
+    </PlanGuard>
   )
 }

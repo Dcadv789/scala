@@ -11,6 +11,7 @@ import { DropdownMenu } from "@/components/ui/dropdown-menu"
 import React from "react"
 
 import { useState, useEffect, useRef, Suspense, useCallback } from "react"
+import { PlanGuard } from "@/components/auth/plan-guard"
 
 // File type configurations - moved outside component
 const ACCEPTED_FILE_TYPES = {
@@ -217,8 +218,9 @@ function ChatContent() {
             }
           },
           auth: {
-            persistSession: false, // Não persistir sessão no localStorage (já temos nosso próprio)
-            autoRefreshToken: false
+            persistSession: false, // Não persistir sessão automaticamente
+            autoRefreshToken: false, // Desabilitar refresh automático (usamos nosso próprio)
+            detectSessionInUrl: false
           }
         })
         
@@ -350,12 +352,53 @@ function ChatContent() {
   
   // Carregar conexões do Supabase
   useEffect(() => {
+    if (!empresaId) {
+      console.log("[Chat] ⏳ Aguardando empresaId para carregar conexões...")
+      return
+    }
+    
+    // Evitar requisições duplicadas
+    const requestKey = `connections-${empresaId}-${isSuperAdmin}`
+    if (loadingConnectionsRef.current) {
+      console.log("[Chat] ⏸️ Requisição de conexões já em andamento, ignorando...")
+      return
+    }
+    
+    if (lastConnectionRequestRef.current === requestKey) {
+      console.log("[Chat] ⏸️ Requisição de conexões idêntica já foi feita, ignorando...")
+      return
+    }
+    
+    loadingConnectionsRef.current = true
+    lastConnectionRequestRef.current = requestKey
+    
     const loadConnections = async () => {
       console.log("[Chat] ====== Carregando conexões ======")
+      console.log("[Chat] 📊 FILTRO DE CONEXÕES:", {
+        empresaId,
+        isSuperAdmin,
+        filtro: isSuperAdmin 
+          ? "🔑 SUPERADMIN: Mostrando TODAS as conexões (todas as empresas)"
+          : `👤 USUÁRIO COMUM: Mostrando conexões da EMPRESA ${empresaId}`
+      })
+      
       try {
         const conns = await fetchConnections()
         console.log("[Chat] ✅ Conexões carregadas:", conns.length)
-        console.log("[Chat] Conexões:", conns.map((c: any) => ({ id: c.id, nome: c.nome, phone: c.phone })))
+        
+        // Validação: verificar se conexões pertencem à empresa correta (se não for superadmin)
+        if (!isSuperAdmin && empresaId) {
+          const conexoesInvalidas = conns.filter((c: any) => c.id_empresa !== empresaId)
+          if (conexoesInvalidas.length > 0) {
+            console.warn("[Chat] ⚠️ ATENÇÃO: Encontradas conexões de outras empresas:", conexoesInvalidas)
+          } else {
+            console.log("[Chat] ✅ VALIDAÇÃO: Todas as conexões pertencem à empresa logada")
+          }
+        } else if (isSuperAdmin) {
+          console.log("[Chat] ✅ VALIDAÇÃO: SuperAdmin → Exibindo conexões de todas as empresas (correto)")
+        }
+        
+        console.log("[Chat] 📋 Conexões:", conns.map((c: any) => ({ id: c.id, nome: c.nome, phone: c.phone, id_empresa: c.id_empresa })))
         setConnections(conns)
         
         // Verificar se há conexão salva no localStorage
@@ -376,15 +419,56 @@ function ChatContent() {
         }
       } catch (error) {
         console.error("[Chat] ❌ Erro ao carregar conexões:", error)
+      } finally {
+        loadingConnectionsRef.current = false
+        console.log("[Chat] ====== FINALIZADO Carregamento de Conexões ======")
       }
     }
     loadConnections()
-  }, [])
+  }, [empresaId, isSuperAdmin])
+  
+  // Refs para evitar requisições duplicadas
+  const loadingProfilesRef = useRef(false)
+  const lastProfileRequestRef = useRef<string>("")
+  const loadingConnectionsRef = useRef(false)
+  const lastConnectionRequestRef = useRef<string>("")
+  const isSuperAdminDeterminedRef = useRef(false) // Para evitar mudanças infinitas de isSuperAdmin
+  const isSuperAdminRef = useRef(false) // Ref para rastrear isSuperAdmin sem causar re-renders
   
   // Carregar perfis disponíveis
   useEffect(() => {
-    const loadProfiles = async () => {
+    if (!empresaId) {
+      console.log("[Chat] ⏳ Aguardando empresaId para carregar perfis...")
+      return
+    }
+    
+    const loadProfiles = async (connectionId?: string | null) => {
+      // Criar chave única para esta requisição (sem isSuperAdmin para evitar loops)
+      const requestKey = `${empresaId}-${connectionId || 'none'}`
+      
+      // Evitar requisições duplicadas
+      if (loadingProfilesRef.current) {
+        console.log("[Chat] ⏸️ Requisição de perfis já em andamento, ignorando...")
+        return
+      }
+      
+      if (lastProfileRequestRef.current === requestKey) {
+        console.log("[Chat] ⏸️ Requisição idêntica já foi feita, ignorando...")
+        return
+      }
+      
+      loadingProfilesRef.current = true
+      lastProfileRequestRef.current = requestKey
+      
       console.log("[Chat] ====== INICIANDO Carregamento de Perfis ======")
+      console.log("[Chat] 📊 FILTROS APLICADOS:", {
+        empresaId,
+        isSuperAdmin,
+        connectionId: connectionId || "NÃO FORNECIDO",
+        filtroFinal: isSuperAdmin && connectionId 
+          ? `🔑 SUPERADMIN: Filtrando agentes da EMPRESA DA CONEXÃO ${connectionId}`
+          : `👤 USUÁRIO COMUM: Filtrando agentes da EMPRESA LOGADA ${empresaId}`
+      })
       
       // Primeiro, tentar obter o perfil do usuário autenticado do localStorage
       let perfilUsuarioAutenticado: string | null = null
@@ -409,8 +493,19 @@ function ChatContent() {
       }
       
       try {
-        console.log("[Chat] 📡 Fazendo requisição para /api/chat/profiles...")
-        const response = await authFetch("/api/chat/profiles")
+        // Se já foi determinado que é superadmin E tiver conexão selecionada, passar id_conexao
+        // Caso contrário, não passar (usar empresa do usuário)
+        let url = "/api/chat/profiles"
+        const shouldUseConnection = isSuperAdminDeterminedRef.current && isSuperAdmin && connectionId
+        if (shouldUseConnection) {
+          url = `/api/chat/profiles?id_conexao=${connectionId}`
+          console.log("[Chat] 🔑 FILTRO SUPERADMIN: Passando id_conexao para filtrar agentes da empresa da conexão:", connectionId)
+        } else {
+          console.log("[Chat] 👤 FILTRO: Usando empresa logada para filtrar agentes:", empresaId)
+        }
+        
+        console.log("[Chat] 📡 Fazendo requisição ÚNICA para:", url)
+        const response = await authFetch(url)
         console.log("[Chat] 📥 Resposta recebida:", {
           status: response.status,
           statusText: response.statusText,
@@ -438,36 +533,55 @@ function ChatContent() {
         
         const result = await response.json()
         
-        console.log("[Chat FRONTEND] ========================================")
-        console.log("[Chat FRONTEND] 📊 RESPOSTA COMPLETA DA API DE PERFIS")
-        console.log("[Chat FRONTEND] ========================================")
-        console.log("[Chat FRONTEND] success:", result.success)
-        console.log("[Chat FRONTEND] perfisCount:", result.perfis?.length || 0)
-        console.log("[Chat FRONTEND] isDono:", result.isDono)
-        console.log("[Chat FRONTEND] tipo de isDono:", typeof result.isDono)
-        console.log("[Chat FRONTEND] isDono === true?", result.isDono === true)
-        console.log("[Chat FRONTEND] isDono === false?", result.isDono === false)
-        console.log("[Chat FRONTEND] error:", result.error)
-        console.log("[Chat FRONTEND] perfis:", result.perfis)
-        console.log("[Chat FRONTEND] JSON completo:", JSON.stringify(result, null, 2))
-        console.log("[Chat FRONTEND] ========================================")
-        
         if (result.success && result.perfis) {
+          const isDonoValue = Boolean(result.isDono)
+          
+          // Log claro sobre os filtros aplicados
+          console.log("═══════════════════════════════════════════════════════════")
+          console.log("🎯 FILTROS APLICADOS E RESULTADO:")
+          console.log("═══════════════════════════════════════════════════════════")
+          console.log("📊 Tipo de Usuário:", isDonoValue ? "🔑 SUPERADMIN" : "👤 USUÁRIO COMUM")
+          console.log("🏢 Empresa ID:", empresaId)
+          if (isSuperAdmin && connectionId) {
+            console.log("🔗 Conexão Selecionada:", connectionId)
+            console.log("✅ FILTRO: Mostrando agentes da EMPRESA DA CONEXÃO selecionada")
+          } else {
+            console.log("✅ FILTRO: Mostrando agentes da EMPRESA LOGADA")
+          }
+          console.log("👥 Total de Perfis Retornados:", result.perfis.length)
+          console.log("📋 Perfis:", result.perfis.map((p: any) => ({ id: p.id, nome: p.nome_completo })))
+          
+          // Validação
+          if (isDonoValue && connectionId) {
+            console.log("✅ VALIDAÇÃO: SuperAdmin com conexão → Deve mostrar agentes da empresa da conexão")
+          } else if (isDonoValue && !connectionId) {
+            console.log("✅ VALIDAÇÃO: SuperAdmin sem conexão → Deve mostrar agentes da empresa logada")
+          } else if (!isDonoValue && result.perfis.length === 1) {
+            console.log("✅ VALIDAÇÃO: Usuário comum → Deve mostrar apenas 1 perfil (correto)")
+          } else if (!isDonoValue && result.perfis.length > 1) {
+            console.warn("⚠️ VALIDAÇÃO: Usuário comum tem mais de 1 perfil (ERRO!)")
+          }
+          console.log("═══════════════════════════════════════════════════════════")
+          
           setProfiles(result.perfis)
           
-          console.log("[Chat FRONTEND] ====== PROCESSANDO RESPOSTA ======")
-          console.log("[Chat FRONTEND] result.isDono recebido:", result.isDono)
-          console.log("[Chat FRONTEND] tipo de result.isDono:", typeof result.isDono)
-          console.log("[Chat FRONTEND] result.isDono === true?", result.isDono === true)
-          console.log("[Chat FRONTEND] result.isDono === false?", result.isDono === false)
-          console.log("[Chat FRONTEND] result.isDono || false:", result.isDono || false)
-          console.log("[Chat FRONTEND] Boolean(result.isDono):", Boolean(result.isDono))
-          
-          const isDonoValue = Boolean(result.isDono)
-          console.log("[Chat FRONTEND] isDonoValue final:", isDonoValue)
-          console.log("[Chat FRONTEND] ========================================")
-          
-          setIsSuperAdmin(isDonoValue)
+          // CRÍTICO: Atualizar isSuperAdmin APENAS quando NÃO tem connectionId
+          // Quando tem connectionId, a resposta pode ter 0 perfis (conexão sem agentes),
+          // mas isso NÃO significa que o usuário não é dono
+          if (!connectionId) {
+            // Sem connectionId: esta é a requisição base, determinar isSuperAdmin aqui
+            if (!isSuperAdminDeterminedRef.current) {
+              setIsSuperAdmin(isDonoValue)
+              isSuperAdminRef.current = isDonoValue
+              isSuperAdminDeterminedRef.current = true
+              console.log("[Chat] 🔄 isSuperAdmin determinado (sem connectionId):", isDonoValue)
+            } else {
+              console.log("[Chat] ⏸️ isSuperAdmin já foi determinado, não atualizando")
+            }
+          } else {
+            // Com connectionId: NÃO atualizar isSuperAdmin, apenas usar o que já foi determinado
+            console.log("[Chat] ⏸️ Requisição com connectionId - não atualizando isSuperAdmin (já determinado:", isSuperAdminRef.current, ")")
+          }
           
           // Prioridade: 1) Perfil do usuário autenticado, 2) Perfil salvo, 3) Primeiro da lista
           let perfilParaSelecionar: string | null = null
@@ -503,12 +617,36 @@ function ChatContent() {
       } catch (error) {
         console.error("[Chat] ❌ Erro ao carregar perfis:", error)
         setProfiles([])
+      } finally {
+        loadingProfilesRef.current = false
+        console.log("[Chat] ====== FINALIZADO Carregamento de Perfis ======")
       }
-      
-      console.log("[Chat] ====== FINALIZADO Carregamento de Perfis ======")
     }
-    loadProfiles()
-  }, [])
+    
+    // Evitar carregar se não tem empresaId
+    if (!empresaId) {
+      console.log("[Chat] ⏸️ Sem empresaId, não carregando perfis")
+      return
+    }
+    
+    // ESTRATÉGIA: Sempre fazer a primeira requisição SEM connectionId para determinar isSuperAdmin
+    // Depois disso, se for superadmin e tiver connectionId, usar connectionId
+    // Usar isSuperAdminRef para evitar valores desatualizados
+    if (!isSuperAdminDeterminedRef.current) {
+      // Primeira requisição: sempre sem connectionId para determinar isSuperAdmin
+      console.log("[Chat] 🔍 Primeira requisição: determinando isSuperAdmin (sem connectionId)")
+      loadProfiles()
+    } else if (isSuperAdminRef.current && selectedConnectionId) {
+      // Já determinado como superadmin e tem conexão selecionada: usar connectionId
+      console.log("[Chat] 🔑 SuperAdmin com conexão selecionada, carregando perfis da empresa da conexão")
+      loadProfiles(selectedConnectionId)
+    } else {
+      // Não é superadmin ou não tem conexão selecionada: usar empresa do usuário
+      console.log("[Chat] 👤 Carregando perfis da empresa do usuário")
+      loadProfiles()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedConnectionId, empresaId]) // Removido isSuperAdmin das dependências para evitar loops
   
   // Carregar conversas quando conexão ou perfil for selecionado
   useEffect(() => {
@@ -561,15 +699,26 @@ function ChatContent() {
         }
       })
       
-      console.log("[Chat] Status da resposta:", response.status, response.statusText)
+      console.log("[Chat] 📡 Status da resposta:", response.status, response.statusText)
       const result = await response.json()
-      console.log("[Chat] Resposta da API de contatos:", {
+      console.log("[Chat] 📋 Resposta da API de contatos:", {
         success: result.success,
         total: result.total,
+        contatos_count: result.contatos?.length || 0,
         error: result.error
       })
       
       if (result.success && result.contatos) {
+        console.log("[Chat] ✅ Contatos recebidos:", result.contatos.length)
+        if (result.contatos.length > 0) {
+          console.log("[Chat] 📋 Primeiros 3 contatos:", result.contatos.slice(0, 3).map((c: any) => ({
+            id: c.id,
+            nome: c.nome,
+            telefone: c.telefone,
+            mensagens_nao_lidas: c.mensagens_nao_lidas || 0
+          })))
+        }
+        
         // Converter contatos para formato de conversas (compatibilidade)
         const conversasFormatadas = result.contatos.map((contato: any) => ({
           id: contato.id,
@@ -582,7 +731,7 @@ function ChatContent() {
           unreadCount: contato.mensagens_nao_lidas || 0,
           status: contato.status || "active",
         }))
-        console.log("[Chat] Conversas formatadas:", conversasFormatadas.length)
+        console.log("[Chat] ✅ Conversas formatadas:", conversasFormatadas.length)
         setConversations(conversasFormatadas)
       } else {
         console.warn("[Chat] Nenhuma conversa encontrada ou erro na resposta:", result)
@@ -616,15 +765,41 @@ function ChatContent() {
         }
       })
       
-      console.log("[Chat] Status da resposta:", response.status, response.statusText)
+      console.log("[Chat] 📡 Status da resposta:", response.status, response.statusText)
       const result = await response.json()
-      console.log("[Chat] Resposta da API de mensagens:", {
+      console.log("[Chat] 📋 Resposta da API de mensagens:", {
         success: result.success,
         total: result.total,
-        error: result.error
+        error: result.error,
+        mensagens_count: result.mensagens?.length || 0
       })
       
       if (result.success && result.mensagens) {
+        console.log("[Chat] ✅ Mensagens recebidas da API:", result.mensagens.length)
+        
+        // Log detalhado das primeiras mensagens
+        if (result.mensagens.length > 0) {
+          console.log("[Chat] 📋 Primeira mensagem recebida:", {
+            id: result.mensagens[0].id,
+            direcao: result.mensagens[0].direcao,
+            tipo_midia: result.mensagens[0].tipo_midia,
+            id_conexao: result.mensagens[0].id_conexao,
+            conteudo_preview: result.mensagens[0].conteudo?.substring(0, 50),
+            criado_em: result.mensagens[0].criado_em
+          })
+          
+          if (result.mensagens.length > 1) {
+            console.log("[Chat] 📋 Última mensagem recebida:", {
+              id: result.mensagens[result.mensagens.length - 1].id,
+              direcao: result.mensagens[result.mensagens.length - 1].direcao,
+              tipo_midia: result.mensagens[result.mensagens.length - 1].tipo_midia,
+              id_conexao: result.mensagens[result.mensagens.length - 1].id_conexao,
+              conteudo_preview: result.mensagens[result.mensagens.length - 1].conteudo?.substring(0, 50),
+              criado_em: result.mensagens[result.mensagens.length - 1].criado_em
+            })
+          }
+        }
+        
         // Converter mensagens para formato compatível
         const mensagensFormatadas = result.mensagens.map((msg: any) => ({
           id: msg.id,
@@ -637,7 +812,18 @@ function ChatContent() {
           timestamp: msg.criado_em,
           mediaUrl: msg.url_midia,
         }))
-        console.log("[Chat] Mensagens formatadas:", mensagensFormatadas.length)
+        console.log("[Chat] ✅ Mensagens formatadas:", mensagensFormatadas.length)
+        console.log("[Chat] 📊 Distribuição por tipo:", {
+          text: mensagensFormatadas.filter((m: any) => m.type === "text").length,
+          image: mensagensFormatadas.filter((m: any) => m.type === "image").length,
+          audio: mensagensFormatadas.filter((m: any) => m.type === "audio").length,
+          video: mensagensFormatadas.filter((m: any) => m.type === "video").length,
+          document: mensagensFormatadas.filter((m: any) => m.type === "document").length
+        })
+        console.log("[Chat] 📊 Distribuição por remetente:", {
+          user: mensagensFormatadas.filter((m: any) => m.sender === "user").length,
+          contact: mensagensFormatadas.filter((m: any) => m.sender === "contact").length
+        })
         setMessages(mensagensFormatadas)
         
         // Marcar mensagens como lidas (com autenticação)
@@ -1232,20 +1418,40 @@ function ChatContent() {
   // Buscar novas mensagens do webhook diretamente do Supabase
   const fetchWebhookMessages = async () => {
     try {
+      console.log("[Chat] 🔄 Buscando mensagens do webhook via /api/messages...")
       const response = await fetch("/api/messages")
+      console.log("[Chat] 📡 Status da resposta:", response.status, response.statusText)
+      
       const data = await response.json()
+      console.log("[Chat] 📋 Resposta da API:", {
+        success: data.success,
+        conversations_count: data.conversations?.length || 0,
+        totalMessages: data.totalMessages || 0,
+        error: data.error
+      })
       
       if (data.success && data.conversations && data.conversations.length > 0) {
+        console.log("[Chat] ✅ Conversas recebidas:", data.conversations.length)
+        console.log("[Chat] 📋 Primeiras 3 conversas:", data.conversations.slice(0, 3).map((c: any) => ({
+          id: c.id,
+          contactName: c.contactName,
+          lastMessage: c.lastMessage?.substring(0, 30),
+          unreadCount: c.unreadCount
+        })))
+        
         // Atualizar conversas com as do Supabase
         setConversations(data.conversations)
         
         // Recarregar mensagens se tiver uma conversa selecionada
         if (selectedConversationId) {
+          console.log("[Chat] 🔄 Recarregando mensagens da conversa selecionada:", selectedConversationId)
           loadMessages(selectedConversationId)
         }
+      } else {
+        console.log("[Chat] ⚠️ Nenhuma conversa encontrada ou resposta sem sucesso")
       }
     } catch (error) {
-      console.error("[v0] Error fetching webhook messages:", error)
+      console.error("[Chat] ❌ Erro ao buscar mensagens do webhook:", error)
     }
   }
 
@@ -2268,8 +2474,10 @@ function ChatContent() {
 
 export default function ChatPage() {
   return (
-    <Suspense fallback={<div className="flex h-screen items-center justify-center">Carregando...</div>}>
-      <ChatContent />
-    </Suspense>
+    <PlanGuard>
+      <Suspense fallback={<div className="flex h-screen items-center justify-center">Carregando...</div>}>
+        <ChatContent />
+      </Suspense>
+    </PlanGuard>
   )
 }

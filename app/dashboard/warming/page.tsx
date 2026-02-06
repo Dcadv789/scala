@@ -9,8 +9,9 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Switch } from "@/components/ui/switch"
 import { Flame, Play, Pause, TrendingUp, Shield, Clock, Zap } from "lucide-react"
+import { PlanGuard } from "@/components/auth/plan-guard"
 
-export default function WarmingPage() {
+function WarmingPageContent() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [warmingActive, setWarmingActive] = useState(true)
 
@@ -258,5 +259,13 @@ export default function WarmingPage() {
         </main>
       </div>
     </div>
+  )
+}
+
+export default function WarmingPage() {
+  return (
+    <PlanGuard>
+      <WarmingPageContent />
+    </PlanGuard>
   )
 }

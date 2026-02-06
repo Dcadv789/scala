@@ -20,6 +20,7 @@ import {
   Pie,
   Cell,
 } from "recharts"
+import { PlanGuard } from "@/components/auth/plan-guard"
 
 const messageData = [
   { date: "01/01", enviadas: 1200, entregues: 1180, lidas: 980 },
@@ -46,7 +47,7 @@ const statusDistribution = [
   { name: "Pendentes", value: 320, color: "#f59e0b" },
 ]
 
-export default function AnalyticsPage() {
+function AnalyticsPageContent() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [timeRange, setTimeRange] = useState("7d")
 
@@ -206,5 +207,13 @@ export default function AnalyticsPage() {
         </main>
       </div>
     </div>
+  )
+}
+
+export default function AnalyticsPage() {
+  return (
+    <PlanGuard>
+      <AnalyticsPageContent />
+    </PlanGuard>
   )
 }

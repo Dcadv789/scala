@@ -70,22 +70,32 @@ export async function GET(request: NextRequest) {
     }
 
     // 1. Verificar se o contato existe e pertence à empresa do usuário
+    console.log("[Chat Messages] 🔍 Buscando contato:", idContato)
     const { data: contato, error: contatoError } = await supabase
       .from("contatos")
-      .select("id, id_empresa")
+      .select("id, id_empresa, nome, telefone")
       .eq("id", idContato)
       .single()
 
     if (contatoError || !contato) {
+      console.error("[Chat Messages] ❌ Contato não encontrado:", contatoError?.message)
       return NextResponse.json(
         { success: false, error: "Contato não encontrado" },
         { status: 404 }
       )
     }
 
+    console.log("[Chat Messages] ✅ Contato encontrado:", {
+      id: contato.id,
+      nome: contato.nome,
+      telefone: contato.telefone,
+      id_empresa: contato.id_empresa
+    })
+
     // Verificar permissão
     if (!isSuperAdmin && contato.id_empresa !== empresaId) {
       console.error("[Chat Messages] ❌ Sem permissão - contato pertence a outra empresa")
+      console.error("[Chat Messages] 📋 Empresa do contato:", contato.id_empresa, "vs Empresa do usuário:", empresaId)
       return NextResponse.json(
         { success: false, error: "Sem permissão para acessar este contato" },
         { status: 403 }
@@ -93,12 +103,22 @@ export async function GET(request: NextRequest) {
     }
 
     // 2. Buscar mensagens do contato
+    console.log("[Chat Messages] 🔍 Construindo query para buscar mensagens...")
+    console.log("[Chat Messages] 📋 Filtros a aplicar:", {
+      id_contato: idContato,
+      id_empresa: !isSuperAdmin ? empresaId : "TODAS (SuperAdmin)",
+      id_conexao: idConexao || "NENHUMA",
+      limit: limit,
+      offset: offset
+    })
+    
     let query = supabase
       .from("mensagens")
       .select(`
         id,
         id_contato,
         id_empresa,
+        id_conexao,
         direcao,
         status,
         tipo_midia,
@@ -114,19 +134,26 @@ export async function GET(request: NextRequest) {
     // Aplicar filtro de empresa (superadmin vê tudo)
     if (!isSuperAdmin) {
       query = query.eq("id_empresa", empresaId)
-      console.log("[Chat Messages] Filtrando mensagens por id_empresa:", empresaId)
+      console.log("[Chat Messages] ✅ Filtro aplicado: id_empresa =", empresaId)
+    } else {
+      console.log("[Chat Messages] 🔑 SuperAdmin: sem filtro de empresa")
     }
     
     // Se tiver id_conexao, filtrar mensagens por conexão
     if (idConexao) {
       query = query.eq("id_conexao", idConexao)
-      console.log("[Chat Messages] Filtrando mensagens por id_conexao:", idConexao)
+      console.log("[Chat Messages] ✅ Filtro aplicado: id_conexao =", idConexao)
+    } else {
+      console.log("[Chat Messages] ⚠️ Nenhum id_conexao fornecido - retornando mensagens de todas as conexões do contato")
     }
 
+    console.log("[Chat Messages] 🚀 Executando query...")
     const { data: mensagens, error: mensagensError } = await query
 
     if (mensagensError) {
-      console.error("[Chat Messages] ❌ Erro ao buscar mensagens:", mensagensError)
+      console.error("[Chat Messages] ❌ Erro ao buscar mensagens:", mensagensError.message)
+      console.error("[Chat Messages] 📋 Detalhes do erro:", mensagensError.details)
+      console.error("[Chat Messages] 📋 Código do erro:", mensagensError.code)
       return NextResponse.json(
         { success: false, error: mensagensError.message },
         { status: 500 }
@@ -134,6 +161,22 @@ export async function GET(request: NextRequest) {
     }
     
     console.log("[Chat Messages] ✅ Mensagens encontradas:", mensagens?.length || 0)
+    if (mensagens && mensagens.length > 0) {
+      console.log("[Chat Messages] 📋 Primeira mensagem:", {
+        id: mensagens[0].id,
+        direcao: mensagens[0].direcao,
+        tipo_midia: mensagens[0].tipo_midia,
+        id_conexao: mensagens[0].id_conexao,
+        criado_em: mensagens[0].criado_em
+      })
+      console.log("[Chat Messages] 📋 Última mensagem:", {
+        id: mensagens[mensagens.length - 1].id,
+        direcao: mensagens[mensagens.length - 1].direcao,
+        tipo_midia: mensagens[mensagens.length - 1].tipo_midia,
+        id_conexao: mensagens[mensagens.length - 1].id_conexao,
+        criado_em: mensagens[mensagens.length - 1].criado_em
+      })
+    }
 
     // 3. Marcar mensagens recebidas como lidas (opcional - pode ser feito em endpoint separado)
     // Por enquanto, apenas retornar as mensagens

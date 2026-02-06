@@ -10,8 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Search, Trash2, CheckCircle2, Clock, XCircle, Eye, Send } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { PlanGuard } from "@/components/auth/plan-guard"
 
-export default function MessagesPage() {
+function MessagesPageContent() {
   const [logs, setLogs] = useState<any[]>([])
   const [connections, setConnections] = useState<any[]>([])
   const [searchTerm, setSearchTerm] = useState("")
@@ -253,5 +254,13 @@ export default function MessagesPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function MessagesPage() {
+  return (
+    <PlanGuard>
+      <MessagesPageContent />
+    </PlanGuard>
   )
 }

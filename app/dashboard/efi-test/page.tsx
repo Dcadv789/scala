@@ -5,8 +5,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { CheckCircle, XCircle, Loader2, AlertCircle } from "lucide-react"
+import { PlanGuard } from "@/components/auth/plan-guard"
 
-export default function EfiTestPage() {
+function EfiTestPageContent() {
   const [testing, setTesting] = useState(false)
   const [results, setResults] = useState<any>(null)
 
@@ -165,5 +166,13 @@ export default function EfiTestPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function EfiTestPage() {
+  return (
+    <PlanGuard>
+      <EfiTestPageContent />
+    </PlanGuard>
   )
 }

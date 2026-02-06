@@ -51,7 +51,7 @@ export async function getAuthMembro(request: NextRequest): Promise<MembroComEmpr
     // 2. Buscar perfil na tabela perfis usando o ID do auth.users
     const { data: perfilData, error: perfilError } = await supabase
       .from("perfis")
-      .select("*")
+      .select("id, nome_completo, email")
       .eq("id", authUser.id)
       .maybeSingle()
 
@@ -88,6 +88,19 @@ export async function getAuthMembro(request: NextRequest): Promise<MembroComEmpr
     if (!membrosData || membrosData.length === 0) {
       console.log("[Multi-Tenant Auth] Nenhum membro encontrado para perfil:", perfilData.id)
       return null
+    }
+
+    // Adicionar log para verificar campos retornados
+    if (membrosData && membrosData.length > 0) {
+      console.log("[Multi-Tenant Auth] 📊 Campos retornados do membro:", Object.keys(membrosData[0]))
+      console.log("[Multi-Tenant Auth] 📊 id_perfil do membro:", membrosData[0].id_perfil)
+      console.log("[Multi-Tenant Auth] 📊 email do membro:", membrosData[0].email)
+      if (!membrosData[0].id_perfil) {
+        console.error("[Multi-Tenant Auth] ⚠️ ATENÇÃO: membro não tem id_perfil!")
+      }
+      if (!membrosData[0].email) {
+        console.error("[Multi-Tenant Auth] ⚠️ ATENÇÃO: membro não tem email!")
+      }
     }
 
     // 4. Se tiver múltiplos membros, usar o id_empresa do header X-Selected-Empresa ou primeiro membro
@@ -127,8 +140,22 @@ export async function getAuthMembro(request: NextRequest): Promise<MembroComEmpr
 
     console.log("[Multi-Tenant Auth] ✅ Membro encontrado:", membro.id, "Empresa:", empresa.nome, "ID Empresa:", empresa.id)
 
+    // Se o membro não tiver email, buscar do perfil como fallback
+    let emailFinal = membro.email
+    if (!emailFinal && perfilData.email) {
+      console.log("[Multi-Tenant Auth] ⚠️ Membro sem email, usando email do perfil como fallback")
+      emailFinal = perfilData.email
+    }
+
+    if (!emailFinal) {
+      console.error("[Multi-Tenant Auth] ❌ ERRO: Nenhum email encontrado (nem no membro nem no perfil)")
+      console.error("[Multi-Tenant Auth] 📋 Dados do membro:", JSON.stringify(membro, null, 2))
+      console.error("[Multi-Tenant Auth] 📋 Dados do perfil:", JSON.stringify(perfilData, null, 2))
+    }
+
     return {
       ...membro,
+      email: emailFinal || membro.email, // Garantir que email sempre tenha valor
       empresa: empresa
     } as MembroComEmpresa
   } catch (error) {

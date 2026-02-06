@@ -1,47 +1,27 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
-import { cookies } from "next/headers"
+import { getAuthContext } from "@/lib/api-auth-multi-tenant"
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-// Função para obter o usuário autenticado
-async function getAuthUser(request: NextRequest) {
-  try {
-    const cookieStore = await cookies()
-    const accessToken = cookieStore.get("sb-access-token")?.value ||
-      cookieStore.get("supabase-auth-token")?.value
-    
-    if (accessToken) {
-      const { data: { user } } = await supabase.auth.getUser(accessToken)
-      return user
-    }
-    
-    const authHeader = request.headers.get("authorization")
-    if (authHeader?.startsWith("Bearer ")) {
-      const { data: { user } } = await supabase.auth.getUser(authHeader.substring(7))
-      return user
-    }
-    
-    return null
-  } catch {
-    return null
-  }
-}
-
 // POST - Iniciar disparo de campanha
 export async function POST(request: NextRequest) {
   try {
-    const user = await getAuthUser(request)
+    const authContext = await getAuthContext(request)
     const { campaignId } = await request.json()
 
     if (!campaignId) {
       return NextResponse.json({ error: "ID da campanha é obrigatório" }, { status: 400 })
     }
 
-    // Buscar campanha com conexão (verificando que pertence ao usuario)
+    if (!authContext) {
+      return NextResponse.json({ error: "Não autenticado" }, { status: 401 })
+    }
+
+    // Buscar campanha com conexão (verificando que pertence à empresa)
     let query = supabase
       .from("campanhas")
       .select(`
@@ -50,9 +30,9 @@ export async function POST(request: NextRequest) {
       `)
       .eq("id", campaignId)
     
-    // Verificar que a campanha pertence ao usuario
-    if (user) {
-      query = query.eq("id_usuario", user.id)
+    // Verificar que a campanha pertence à empresa do membro
+    if (!authContext.isSuperAdmin) {
+      query = query.eq("id_empresa", authContext.empresaId)
     }
     
     const { data: campaign, error: campaignError } = await query.single()

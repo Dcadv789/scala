@@ -47,6 +47,7 @@ import { useToast } from "@/hooks/use-toast"
 import { Loader2, AlertCircle } from "lucide-react"
 import { WhatsAppSupportButton } from "@/components/dashboard/whatsapp-support-button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { PlanGuard } from "@/components/auth/plan-guard"
 
 type Template = {
   id: string
@@ -74,7 +75,7 @@ type Template = {
   qualityScore?: number
 }
 
-export default function TemplatesPage() {
+function TemplatesPageContent() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [templates, setTemplates] = useState<Template[]>([])
@@ -2342,5 +2343,13 @@ export default function TemplatesPage() {
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+export default function TemplatesPage() {
+  return (
+    <PlanGuard>
+      <TemplatesPageContent />
+    </PlanGuard>
   )
 }

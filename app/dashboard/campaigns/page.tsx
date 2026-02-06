@@ -9,8 +9,9 @@ import { MobileNav } from "@/components/dashboard/mobile-nav"
 import { PaymentPendingBanner } from "@/components/dashboard/payment-pending-banner"
 import { Button } from "@/components/ui/button"
 import { Plus } from "lucide-react"
+import { PlanGuard } from "@/components/auth/plan-guard"
 
-export default function CampaignsPage() {
+function CampaignsPageContent() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
 
@@ -47,5 +48,13 @@ export default function CampaignsPage() {
       <CreateCampaignDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
       <MobileNav />
     </div>
+  )
+}
+
+export default function CampaignsPage() {
+  return (
+    <PlanGuard>
+      <CampaignsPageContent />
+    </PlanGuard>
   )
 }

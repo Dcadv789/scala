@@ -8,8 +8,9 @@ import { Badge } from "@/components/ui/badge"
 import { RefreshCw, CheckCircle, XCircle, AlertTriangle, ExternalLink, Copy } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { WEBHOOK_CONFIG } from "@/lib/webhook-config"
+import { PlanGuard } from "@/components/auth/plan-guard"
 
-export default function DiagnosticoPage() {
+function DiagnosticoPageContent() {
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState<any>(null)
   const { toast } = useToast()
@@ -240,5 +241,13 @@ export default function DiagnosticoPage() {
         </Button>
       </div>
     </div>
+  )
+}
+
+export default function DiagnosticoPage() {
+  return (
+    <PlanGuard>
+      <DiagnosticoPageContent />
+    </PlanGuard>
   )
 }
